@@ -38,10 +38,15 @@
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col overflow-hidden">
 
-    <!-- 浮動退出專注模式按鈕 -->
-    <button id="btn-exit-focus" onclick="toggleFocusMode()" class="hidden fixed top-4 right-4 z-[9999] bg-slate-800/90 hover:bg-slate-700 text-white px-5 py-2.5 rounded-full font-bold text-sm shadow-2xl backdrop-blur flex items-center gap-2 border border-slate-600 transition-all hover:scale-105">
-        ❌ 退出專注模式
-    </button>
+    <!-- 專注模式浮動控制列 -->
+    <div id="focus-mode-controls" class="hidden fixed top-4 right-4 z-[9999] flex items-center gap-2">
+        <button onclick="openQrModal()" class="bg-indigo-600/90 hover:bg-indigo-500 text-white px-4 py-2.5 rounded-full font-bold text-sm shadow-2xl backdrop-blur flex items-center gap-2 border border-indigo-400 transition-all hover:scale-105">
+            📱 邀請碼
+        </button>
+        <button onclick="toggleFocusMode()" class="bg-slate-800/90 hover:bg-slate-700 text-white px-4 py-2.5 rounded-full font-bold text-sm shadow-2xl backdrop-blur flex items-center gap-2 border border-slate-600 transition-all hover:scale-105">
+            ❌ 退出專注
+        </button>
+    </div>
 
     <header id="main-header" class="bg-white border-b border-slate-200 shadow-sm z-50 shrink-0 focus-hide">
         <div class="max-w-[1600px] mx-auto px-4 py-3 flex flex-col sm:flex-row justify-between items-center gap-3">
@@ -275,7 +280,7 @@
                         <div>
                             <div class="flex justify-between items-center mb-3 px-1">
                                 <h3 class="text-xs font-bold text-slate-700">👥 全班回應展示</h3>
-                                <span class="text-[10px] text-slate-400 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>自動更新中</span>
+                                <span class="text-[10px] text-slate-400 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>極速同步中</span>
                             </div>
                             <div id="student-grid" class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 gap-3 pb-8">
                                 <!-- 卡片動態注入 -->
@@ -368,9 +373,13 @@
 
         let isMockingEnabled = false, currentMode = 'yes_no', currentRole = 'split'; 
         let timerEndTime = 0, timerInterval = null;
-        let sseRoom = null, sseResponses = null, pollingInterval = null; 
+        
+        // 🚀 雙核連線機制變數
+        let sseRoom = null, sseResponses = null;
+        let roomPollingTimer = null, responsePollingTimer = null; 
+        let lastClearTime = 0; // 防呆清空驗證機制
+        
         let localResponses = {}; 
-
         let localStudent = { id: 'stu_local_' + Math.random().toString(36).substr(2, 9), seat: '', name: '', isLoggedIn: false };
 
         const mockStudentsList = [
@@ -395,7 +404,6 @@
                 if (saved && saved.isLoggedIn) { localStudent = saved; showStudentWorkspace(); }
             } catch(e) {}
 
-            // 確保每次重新整理，都會載入過往的對話備份
             try {
                 const savedRes = JSON.parse(localStorage.getItem(`class_responses_${roomCode}`));
                 if (savedRes) localResponses = savedRes;
@@ -417,9 +425,7 @@
             } else if (syncMethod === 'ntfy') {
                 document.getElementById('cloud-status-dot').className = "w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse";
                 document.getElementById('cloud-status-text').innerText = `🟢 房號 ${roomCode}`;
-                connectNtfy();
-                if (isForceStudent || currentRole === 'student') fetchLatestRoomState();
-                if (!isForceStudent) setInterval(publishRoomStateNtfy, 3000);
+                connectNtfy(); // 啟動雙核機制
             }
 
             setupCanvas();
@@ -435,7 +441,6 @@
             updateStudentUIPanel(currentMode);
         });
 
-        // 🌟 新增跨分頁秒級同步 (針對同裝置本地測試防失效)
         window.addEventListener('storage', (e) => {
             if (e.key === `class_responses_${roomCode}`) {
                 try {
@@ -468,44 +473,52 @@
             document.getElementById('student-login-room-display').innerText = `房號：${roomCode}`;
         }
 
+        // 🚀 雙核雲端連線引擎：SSE 即時推送 + 高頻 2.5 秒輪詢防斷線
         function connectNtfy() {
             if (syncMethod !== 'ntfy') return;
-            if (sseRoom) sseRoom.close(); if (sseResponses) sseResponses.close(); if (pollingInterval) clearInterval(pollingInterval);
+            
+            if (sseRoom) sseRoom.close(); 
+            if (sseResponses) sseResponses.close(); 
+            if (roomPollingTimer) clearInterval(roomPollingTimer);
+            if (responsePollingTimer) clearInterval(responsePollingTimer);
 
-            const roomTopic = `cyk_classview_room_${roomCode}`;
-            const responsesTopic = `cyk_classview_responses_${roomCode}`;
+            // 確保頻道名稱為全小寫，防止系統不匹配
+            const roomTopic = `cyk_room_${roomCode.toLowerCase()}`;
+            const resTopic = `cyk_res_${roomCode.toLowerCase()}`;
 
+            // SSE 設定
             sseRoom = new EventSource(`https://ntfy.sh/${roomTopic}/sse`);
             sseRoom.addEventListener('message', (e) => {
                 try {
                     const data = JSON.parse(e.data);
+                    if (data.event === 'message' && data.message) handleRoomStateUpdate(JSON.parse(data.message));
+                } catch (err) {}
+            });
+
+            sseResponses = new EventSource(`https://ntfy.sh/${resTopic}/sse`);
+            sseResponses.addEventListener('message', (e) => {
+                try {
+                    const data = JSON.parse(e.data);
                     if (data.event === 'message' && data.message) {
                         const payload = JSON.parse(data.message);
-                        if (payload.type === 'ROOM_STATE') handleRoomStateUpdate(payload);
+                        if (payload.studentId && currentRole !== 'student') saveAndRenderStudentResponse(payload);
                     }
                 } catch (err) {}
             });
 
-            if (!isForceStudent && (currentRole === 'split' || currentRole === 'teacher')) {
-                sseResponses = new EventSource(`https://ntfy.sh/${responsesTopic}/sse`);
-                sseResponses.addEventListener('message', (e) => {
-                    try {
-                        const data = JSON.parse(e.data);
-                        if (data.event === 'message' && data.message) {
-                            const payload = JSON.parse(data.message);
-                            if (payload.studentId) saveAndRenderStudentResponse(payload);
-                        }
-                    } catch (err) {}
-                });
-                pollingInterval = setInterval(pollNtfyResponses, 3000); // 縮短至3秒，加快顯示
-            }
-            sseRoom.onerror = () => setTimeout(connectNtfy, 5000);
+            // 強制高頻輪詢 (Polling Fallbacks) - 拯救斷線 iPad
+            roomPollingTimer = setInterval(fetchLatestRoomState, 2500);
+            responsePollingTimer = setInterval(pollNtfyResponses, 2500);
+
+            sseRoom.onerror = () => { sseRoom.close(); setTimeout(connectNtfy, 4000); };
+            sseResponses.onerror = () => { sseResponses.close(); };
         }
 
         async function pollNtfyResponses() {
             if (syncMethod !== 'ntfy' || currentRole === 'student') return;
+            const resTopic = `cyk_res_${roomCode.toLowerCase()}`;
             try {
-                const res = await fetch(`https://ntfy.sh/cyk_classview_responses_${roomCode}/json?poll=1`);
+                const res = await fetch(`https://ntfy.sh/${resTopic}/json?poll=1`);
                 const text = await res.text();
                 text.trim().split('\n').forEach(line => {
                     if (!line) return;
@@ -525,29 +538,45 @@
 
         async function fetchLatestRoomState() {
             if (syncMethod !== 'ntfy') return;
+            const roomTopic = `cyk_room_${roomCode.toLowerCase()}`;
             try {
-                const res = await fetch(`https://ntfy.sh/cyk_classview_room_${roomCode}/json?poll=1`);
+                const res = await fetch(`https://ntfy.sh/${roomTopic}/json?poll=1`);
                 const text = await res.text();
                 const lines = text.trim().split('\n');
                 for (let i = lines.length - 1; i >= 0; i--) {
                     if (lines[i]) {
                         const data = JSON.parse(lines[i]);
                         if (data.event === 'message' && data.message) {
-                            const payload = JSON.parse(data.message);
-                            if (payload.type === 'ROOM_STATE') { handleRoomStateUpdate(payload); break; }
+                            handleRoomStateUpdate(JSON.parse(data.message));
+                            break;
                         }
                     }
                 }
             } catch (e) {}
         }
 
-        async function publishRoomStateNtfy() {
+        async function publishRoomStateNtfy(clearTime = 0) {
             if (syncMethod !== 'ntfy') return;
+            const roomTopic = `cyk_room_${roomCode.toLowerCase()}`;
             const payload = { type: 'ROOM_STATE', currentMode: currentMode, timerEndTime: timerEndTime, timestamp: Date.now() };
-            try { await fetchWithRetry(`https://ntfy.sh/cyk_classview_room_${roomCode}`, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(payload) }); } catch (e) {}
+            if (clearTime > 0) payload.clearCommand = clearTime;
+            
+            try { await fetchWithRetry(`https://ntfy.sh/${roomTopic}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); } catch (e) {}
         }
 
         function handleRoomStateUpdate(payload) {
+            if (payload.type !== 'ROOM_STATE') return;
+            
+            // 強制清空驗證機制
+            if (payload.clearCommand && payload.clearCommand > lastClearTime) {
+                lastClearTime = payload.clearCommand;
+                localResponses = {};
+                localStorage.removeItem(`class_responses_${roomCode}`);
+                clearCanvasLocal();
+                if (currentRole !== 'student') renderTeacherDashboard({}, currentMode);
+                document.getElementById('display-last-submit').innerHTML = `<span class="text-slate-600">等待作答</span>`;
+            }
+
             if (payload.currentMode && payload.currentMode !== currentMode) {
                 currentMode = payload.currentMode;
                 updateStudentUIPanel(currentMode); updateTeacherModeButtons(currentMode);
@@ -556,10 +585,10 @@
                 const remaining = Math.round((payload.timerEndTime - Date.now()) / 1000);
                 if (remaining > 0) syncCountdownTimer(payload.timerEndTime); else stopTimerLocal();
             } else stopTimerLocal();
-            if (payload.clearCommand) clearCanvasLocal();
         }
 
         function saveAndRenderStudentResponse(payload) {
+            if (payload.clearCommand && payload.clearCommand > lastClearTime) return; // 忽略被清空的答案
             localResponses[payload.studentId] = { seat: payload.seat || '', name: payload.name, answer: payload.answer, timestamp: payload.timestamp };
             localStorage.setItem(`class_responses_${roomCode}`, JSON.stringify(localResponses));
             if (currentRole !== 'student') renderTeacherDashboard(localResponses, currentMode);
@@ -586,35 +615,26 @@
             });
         }
 
-        // 🌟 學生送出答案核心 (含抗併發 Jitter 機制)
+        // 🌟 學生送出答案核心 (含微隨機錯開避免網路塞車)
         async function submitAnswer(ans) {
             if (!localStudent.isLoggedIn) return showToast('請先登入！', 'warning');
             if (!ans.startsWith('data:image')) highlightSelectedAnswer(ans);
 
             const ts = Date.now();
-            // 優先寫入本地記憶體，確保雙螢幕測試的瞬間渲染 (0ms延遲)
+            // 優先本地紀錄
             localResponses[localStudent.id] = { seat: localStudent.seat, name: localStudent.name, answer: ans, timestamp: ts };
             localStorage.setItem(`class_responses_${roomCode}`, JSON.stringify(localResponses));
             if (currentRole !== 'student') renderTeacherDashboard(localResponses, currentMode);
 
             if (syncMethod === 'firebase' && db && currentUser) {
-                try {
-                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'responses', localStudent.id), { seat: localStudent.seat, name: localStudent.name, answer: ans, timestamp: ts });
-                } catch (e) {}
+                try { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'responses', localStudent.id), { seat: localStudent.seat, name: localStudent.name, answer: ans, timestamp: ts }); } catch (e) {}
             } else if (syncMethod === 'ntfy') {
+                const resTopic = `cyk_res_${roomCode.toLowerCase()}`;
                 const payload = { studentId: localStudent.id, seat: localStudent.seat, name: localStudent.name, answer: ans, timestamp: ts };
-                // 產生 0 ~ 800 毫秒隨機延遲，防止全班同時送出被免費雲端擋下 (429 Rate Limit)
-                const jitterDelay = Math.floor(Math.random() * 800);
+                // 產生 0~300 毫秒隨機延遲，打散併發封包
+                const jitterDelay = Math.floor(Math.random() * 300);
                 setTimeout(async () => {
-                    try {
-                        await fetchWithRetry(`https://ntfy.sh/cyk_classview_responses_${roomCode}`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'text/plain' },
-                            body: JSON.stringify(payload)
-                        });
-                    } catch (e) {
-                        console.error("提交至雲端徹底失敗", e);
-                    }
+                    try { await fetchWithRetry(`https://ntfy.sh/${resTopic}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); } catch (e) {}
                 }, jitterDelay);
             }
 
@@ -632,10 +652,10 @@
             });
         }
 
-        // 🌟 超級壓縮畫布 (100px寬微縮技術，確保不超過 4KB 上傳限制)
+        // 🌟 超級壓縮畫布
         function getCompressedDrawing() {
             if (!canvas) return '';
-            const maxWidth = 120; // 壓縮得非常小，僅供老師辨識
+            const maxWidth = 150; 
             let width = canvas.width, height = canvas.height;
             if (width > maxWidth) { height = Math.round((height * maxWidth) / width); width = maxWidth; }
             
@@ -645,8 +665,7 @@
             tCtx.fillStyle = '#FFFFFF'; tCtx.fillRect(0, 0, width, height);
             tCtx.drawImage(canvas, 0, 0, width, height);
             
-            // 輸出 0.15 超低畫質 JPEG，大小保證在 1~3KB 內
-            return tempCanvas.toDataURL('image/jpeg', 0.15);
+            return tempCanvas.toDataURL('image/jpeg', 0.2); // 使用輕量 JPEG
         }
 
         function submitDrawingLive() {
@@ -661,7 +680,7 @@
             writeDrawingToCloud(dataUrl);
         }
 
-        async function writeDrawingToCloud(dataUrl) {
+        window.writeDrawingToCloud = async function(dataUrl) {
             isWritingDrawing = true;
             try { await submitAnswer(dataUrl); } 
             finally {
@@ -674,12 +693,11 @@
 
         window.toggleFocusMode = function() {
             const body = document.body; body.classList.toggle('is-focus-mode');
-            const btnExit = document.getElementById('btn-exit-focus');
-            
+            const controls = document.getElementById('focus-mode-controls');
             if (body.classList.contains('is-focus-mode')) {
-                btnExit.classList.remove('hidden'); showToast("已進入簡報專注模式！", "success");
+                controls.classList.remove('hidden'); showToast("已進入簡報專注模式！", "success");
             } else {
-                btnExit.classList.add('hidden'); showToast("已退出專注模式。", "info");
+                controls.classList.add('hidden'); showToast("已退出專注模式。", "info");
             }
             setTimeout(() => { window.dispatchEvent(new Event('resize')); adjustStudentGridForMode(currentMode); }, 350);
         };
@@ -733,13 +751,14 @@
 
             Object.keys(responses).forEach(key => {
                 const res = responses[key];
-                fullList.push({ id: key, seat: res.seat || '', name: res.name, isLocal: key === localStudent.id, answer: res.answer, timestamp: res.timestamp });
+                // 過濾掉髒資料
+                if (res && res.answer !== undefined) fullList.push({ id: key, seat: res.seat || '', name: res.name, isLocal: key === localStudent.id, answer: res.answer, timestamp: res.timestamp });
             });
 
             fullList.sort((a, b) => {
                 if (a.seat && b.seat) return parseInt(a.seat) - parseInt(b.seat);
                 if (a.seat) return -1; if (b.seat) return 1;
-                return a.name.localeCompare(b.name, 'zh-Hant');
+                return (a.name || '').localeCompare(b.name || '', 'zh-Hant');
             });
 
             const submittedCount = fullList.filter(s => s.answer !== '').length;
@@ -749,7 +768,7 @@
             if (activeMode === 'yes_no') stats = { '✓': 0, '✗': 0 }; else if (activeMode === 'ab') stats = { 'A': 0, 'B': 0 }; else if (activeMode === 'abcd') stats = { 'A': 0, 'B': 0, 'C': 0, 'D': 0 };
 
             if (fullList.length === 0) {
-                grid.innerHTML = `<div class="col-span-full py-8 text-center text-slate-400 bg-white rounded-xl border border-slate-100 shadow-inner"><p>目前尚無學生加入課堂</p></div>`;
+                grid.innerHTML = `<div class="col-span-full py-8 text-center text-slate-400 bg-white rounded-xl border border-slate-100 shadow-inner"><p>目前尚無學生回答</p></div>`;
             } else {
                 fullList.forEach(student => {
                     const hasAnswer = student.answer && student.answer !== '';
@@ -780,7 +799,7 @@
                                 </div>`;
                         }
                     } else {
-                        cardContent = `<div class="flex-1 flex items-center justify-center h-16 text-slate-300"><span class="text-[10px] font-bold animate-pulse">作答中...</span></div>`;
+                        cardContent = `<div class="flex-1 flex items-center justify-center h-16 text-slate-300"><span class="text-[10px] font-bold animate-pulse">等待中...</span></div>`;
                     }
 
                     const borderClass = student.isLocal ? 'border-2 border-indigo-400 ring-2 ring-indigo-50 bg-indigo-50/10' : 'border border-slate-200 bg-white';
@@ -791,7 +810,7 @@
                         <div class="rounded-xl p-2.5 shadow-sm ${borderClass} flex flex-col justify-between transition-all hover:-translate-y-0.5">
                             <div class="flex justify-between items-center mb-1.5 px-0.5">
                                 ${seatBadge}
-                                <span class="text-[11px] ${nameTagClass} truncate w-full text-right">${student.name}</span>
+                                <span class="text-[11px] ${nameTagClass} truncate w-full text-right">${student.name || '未知'}</span>
                             </div>
                             ${cardContent}
                         </div>
@@ -917,8 +936,13 @@
 
         window.switchView = switchView; window.loginStudent = loginStudent; window.logoutStudent = logoutStudent; window.submitAnswer = submitAnswer; window.setGlobalMode = setGlobalMode;
         
+        // 🌟 修正：包含時間戳的強制定步清空
         window.clearAllResponses = async function() {
+            const cTime = Date.now();
+            lastClearTime = cTime;
+            
             localStorage.removeItem(`class_responses_${roomCode}`); localResponses = {}; clearCanvasLocal(); stopTimerLocal();
+            
             if (syncMethod === 'firebase' && db && currentUser) {
                 try {
                     const snap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', 'responses'));
@@ -926,12 +950,9 @@
                     stopTimerCloud();
                 } catch (e) {}
             } else if (syncMethod === 'ntfy') {
-                try {
-                    await fetchWithRetry(`https://ntfy.sh/cyk_classview_room_${roomCode}`, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ type: 'ROOM_STATE', currentMode, timerEndTime: 0, clearCommand: Date.now() }) });
-                    await fetchWithRetry(`https://ntfy.sh/cyk_classview_responses_${roomCode}?clear=1`, { method: 'POST' });
-                } catch (e) {}
+                await publishRoomStateNtfy(cTime);
             }
-            showToast('全班答案已清空！', 'success'); renderTeacherDashboard(localResponses, currentMode);
+            showToast('全班答案已清空！', 'success'); renderTeacherDashboard({}, currentMode);
         };
 
         window.toggleTimer = async function(sec) {
@@ -947,25 +968,24 @@
             else if (syncMethod === 'ntfy') await publishRoomStateNtfy(); else stopTimerLocal();
         };
 
-        // 🌟 修正模擬學生的網路塞車問題 (不再上傳至雲端)
-        window.toggleMockClass = async function() {
+        // 🌟 修正：模擬學生全面改為「本機生成」，不再塞死雲端
+        window.toggleMockClass = function() {
             isMockingEnabled = !isMockingEnabled;
             if (isMockingEnabled) {
                 document.getElementById('btn-mock').className = "text-[10px] bg-amber-500 text-white px-2 py-1 rounded shadow-sm font-bold transition-colors";
-                await autoFillMockAnswers(currentMode);
-                showToast('已開啟模擬學生', 'success');
+                autoFillMockAnswers(currentMode);
+                showToast('已開啟本機模擬學生', 'success');
             } else {
                 document.getElementById('btn-mock').className = "text-[10px] bg-amber-50 text-amber-600 px-2 py-1 rounded border border-amber-200 font-bold hover:bg-amber-100 transition-colors";
                 mockStudentsList.forEach(m => { delete localResponses[m.id]; });
                 localStorage.setItem(`class_responses_${roomCode}`, JSON.stringify(localResponses));
-                if (syncMethod === 'firebase' && db && currentUser) await Promise.all(mockStudentsList.map(m => deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'responses', m.id))));
                 showToast('已移除模擬學生。', 'info');
                 renderTeacherDashboard(localResponses, currentMode);
             }
         };
 
-        async function autoFillMockAnswers(mode) {
-            const proms = mockStudentsList.map(s => {
+        function autoFillMockAnswers(mode) {
+            mockStudentsList.forEach(s => {
                 let a = '';
                 if (mode === 'yes_no') a = Math.random() > 0.3 ? '✓' : '✗';
                 else if (mode === 'ab') a = Math.random() > 0.5 ? 'A' : 'B';
@@ -976,10 +996,8 @@
                     tx.beginPath(); tx.arc(60,45,15,0,Math.PI*2); tx.stroke(); a = tc.toDataURL('image/jpeg', 0.2);
                 }
                 localResponses[s.id] = { seat: s.seat, name: s.name, answer: a, timestamp: Date.now() };
-                if (syncMethod === 'firebase' && db && currentUser) return setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'responses', s.id), localResponses[s.id]);
             });
             localStorage.setItem(`class_responses_${roomCode}`, JSON.stringify(localResponses));
-            if (syncMethod === 'firebase') await Promise.all(proms); 
             renderTeacherDashboard(localResponses, mode);
         }
 
@@ -993,7 +1011,6 @@
             document.getElementById('student-badge').classList.remove('hidden');
             document.getElementById('display-student-info').innerText = name;
             
-            // 恢復當前狀態
             if (localResponses[localStudent.id] && !localResponses[localStudent.id].answer.startsWith('data:image')) {
                 highlightSelectedAnswer(localResponses[localStudent.id].answer);
             }
