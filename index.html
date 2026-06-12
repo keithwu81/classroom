@@ -7,7 +7,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <!-- 使用更穩定且不被學校封鎖的 CDNJS 載入 MQTT 核心 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.5.2/mqtt.min.js"></script>
     <style>
         body { font-family: 'Inter', 'Noto Sans TC', sans-serif; }
@@ -57,7 +56,7 @@
                 </div>
                 <div>
                     <h1 class="font-black text-xl text-slate-800 tracking-tight flex items-center gap-2 flex-wrap">
-                        ClassView <span class="text-emerald-500 font-medium text-xs bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">雲端極速版</span>
+                        ClassView <span class="text-emerald-500 font-medium text-xs bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">雙引擎穩定版</span>
                         <span class="text-indigo-600 font-bold text-xs bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-200">匡智張玉瓊晨輝學校</span>
                     </h1>
                     <p class="text-xs text-slate-400">專為班級即時反饋設計的電子白板</p>
@@ -66,7 +65,7 @@
 
             <div class="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-full text-xs font-semibold">
                 <span id="cloud-status-dot" class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
-                <span id="cloud-status-text" class="text-slate-600">正在建立極速連線...</span>
+                <span id="cloud-status-text" class="text-slate-600">正在建立連線...</span>
             </div>
 
             <div id="role-switcher" class="bg-slate-100 p-1 rounded-xl flex gap-1 w-full sm:w-auto overflow-x-auto">
@@ -87,7 +86,7 @@
                     <span class="text-2xl">📱</span>
                     <div>
                         <h2 class="font-bold text-lg leading-none">學生 iPad 回答端</h2>
-                        <span id="student-active-status" class="text-xs text-indigo-200">實時雲端連線中</span>
+                        <span id="student-active-status" class="text-xs text-indigo-200">雲端連線中</span>
                     </div>
                 </div>
                 <div id="student-badge" class="bg-indigo-700 px-3 py-1 rounded-full text-xs font-semibold hidden">
@@ -281,7 +280,7 @@
                         <div>
                             <div class="flex justify-between items-center mb-3 px-1">
                                 <h3 class="text-xs font-bold text-slate-700">👥 全班回應展示</h3>
-                                <span class="text-[10px] text-slate-400 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>連線同步中</span>
+                                <span class="text-[10px] text-slate-400 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>自動同步中</span>
                             </div>
                             <div id="student-grid" class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 gap-3 pb-8">
                                 <!-- 卡片動態注入 -->
@@ -333,9 +332,9 @@
         </div>
     </div>
 
-    <!-- 核心互動邏輯與連線引擎 -->
+    <!-- 核心互動邏輯與雙引擎備援系統 -->
     <script type="module">
-        let syncMethod = 'mqtt';
+        let syncMethod = 'local';
         let roomCode = '';
 
         const urlParams = new URLSearchParams(window.location.search);
@@ -345,8 +344,11 @@
         let timerEndTime = 0, timerInterval = null;
         let lastClearTime = 0; 
         
-        // 🚀 全新 MQTT WebSocket 雙重備援通道
+        // 🚀 MQTT WebSocket 通道 (首選)
         let mqttClient = null;
+        // 🚀 NTFY HTTP 通道 (備援)
+        let sseRoom = null, sseResponses = null;
+
         let localResponses = {}; 
         let localStudent = { id: 'stu_local_' + Math.random().toString(36).substr(2, 9), seat: '', name: '', isLoggedIn: false };
 
@@ -364,6 +366,17 @@
         let drawColor = '#000000', drawWidth = 5, drawTool = 'pen'; 
         let isWritingDrawing = false, pendingDrawingData = null, drawThrottleTimeout = null;
 
+        // HTTP Fetch Retry 引擎 (供備援使用)
+        async function fetchWithRetry(url, options, retries = 3) {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const res = await fetch(url, options);
+                    if (res.ok) return res;
+                } catch (err) {}
+                await new Promise(r => setTimeout(r, 500 * (i + 1)));
+            }
+        }
+
         window.addEventListener('load', async () => {
             initRoomCode();
 
@@ -377,20 +390,18 @@
                 if (savedRes) localResponses = savedRes;
             } catch(e) {}
 
-            // 環境判斷：若在沙盒預覽模式中（Canvas），強制使用 local 防止 Web Socket 被阻擋
+            // 環境判斷：Canvas 沙盒防護
             try {
-                if (typeof __firebase_config !== 'undefined' && __firebase_config) {
-                    // Firebase setup placeholder if needed
-                } else if (window.location.hostname.includes('usercontent.goog') || window.location.protocol === 'blob:') {
+                if (window.location.hostname.includes('usercontent.goog') || window.location.protocol === 'blob:') {
                     syncMethod = 'local';
                     console.log("Canvas 預覽環境下切換為本地測試模式");
                 } else {
-                    syncMethod = 'mqtt';
+                    syncMethod = 'mqtt'; // 預設使用 MQTT
                 }
             } catch (e) { syncMethod = 'local'; }
 
             if (syncMethod === 'mqtt') {
-                connectMQTT(); // 啟動 MQTT 雙向長連線
+                initCloudConnection();
             } else if (syncMethod === 'local') {
                 document.getElementById('cloud-status-dot').className = "w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse";
                 document.getElementById('cloud-status-text').innerText = "🟢 本地高速模式 (雙螢幕測試)";
@@ -409,7 +420,6 @@
             updateStudentUIPanel(currentMode);
         });
 
-        // 跨分頁秒級同步 (針對同台電腦雙螢幕測試的防護)
         window.addEventListener('storage', (e) => {
             if (e.key === `class_responses_${roomCode}`) {
                 try {
@@ -442,44 +452,64 @@
             document.getElementById('student-login-room-display').innerText = `房號：${roomCode}`;
         }
 
-        // 🚀 MQTT 雙備援伺服器，保證穿透學校防火牆
-        function connectMQTT() {
-            if (typeof mqtt === 'undefined') {
-                showToast("連線套件被阻擋，正使用本地連線模式。", "warning", 5000);
-                return;
+        // ==========================================
+        // 🚀 核心雙引擎啟動邏輯
+        // ==========================================
+        function initCloudConnection() {
+            if (typeof mqtt !== 'undefined') {
+                connectMQTT();
+                // 若 4 秒內未能成功連線 MQTT，自動切換至高相容 HTTPS 備援模式
+                window.mqttTimeout = setTimeout(() => {
+                    if (!mqttClient || !mqttClient.connected) {
+                        console.warn("WebSocket 連線逾時，切換至高相容備援通道");
+                        fallbackToNtfy();
+                    }
+                }, 4000);
+            } else {
+                fallbackToNtfy();
             }
+        }
 
+        function fallbackToNtfy() {
+            if (syncMethod === 'ntfy') return; 
+            syncMethod = 'ntfy';
+            if (mqttClient) {
+                mqttClient.end(); // 中斷失敗的 WebSocket
+            }
+            document.getElementById('cloud-status-dot').className = "w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse";
+            document.getElementById('cloud-status-text').innerText = `🟢 房號 ${roomCode} (高相容備援模式)`;
+            connectNtfy();
+        }
+
+        // ==========================================
+        // 引擎 A：極速 MQTT (WebSocket)
+        // ==========================================
+        function connectMQTT() {
             const options = {
                 clientId: `cv_${roomCode.toLowerCase()}_${Math.random().toString(16).substr(2, 8)}`,
-                clean: true,
-                connectTimeout: 5000,
-                reconnectPeriod: 2000,
-                // 配置 2 個國際公共節點作為備援，自動尋找能連上的。使用 443/8084 等防護牆穿透端口
+                clean: true, connectTimeout: 3500, reconnectPeriod: 2000,
                 servers: [
                     { protocol: 'wss', host: 'broker.emqx.io', port: 8084, path: '/mqtt' },
                     { protocol: 'wss', host: 'broker.hivemq.com', port: 8884, path: '/mqtt' }
                 ]
             };
 
-            try {
-                mqttClient = mqtt.connect(options);
-            } catch (error) {
-                return; // 忽略連線錯誤，依靠本地模式
-            }
+            try { mqttClient = mqtt.connect(options); } catch (error) { return; }
+            
             const roomTopic = `cv_room_${roomCode.toLowerCase()}`;
             const resTopic = `cv_res_${roomCode.toLowerCase()}`;
 
             mqttClient.on('connect', () => {
+                clearTimeout(window.mqttTimeout); // 成功連線，取消備援切換
                 document.getElementById('cloud-status-dot').className = "w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse";
-                document.getElementById('cloud-status-text').innerText = `🟢 房號 ${roomCode} (雲端連線成功)`;
+                document.getElementById('cloud-status-text').innerText = `🟢 房號 ${roomCode} (極速模式)`;
 
                 if (currentRole !== 'student') {
                     mqttClient.subscribe(resTopic, { qos: 1 });
-                    publishRoomStateMQTT(); // 老師上線發布
+                    publishRoomStateCloud();
                 }
                 if (currentRole === 'student' || currentRole === 'split') {
                     mqttClient.subscribe(roomTopic, { qos: 1 });
-                    // 學生上線時主動發出握手請求，要老師馬上發題目過來
                     mqttClient.publish(resTopic, JSON.stringify({ type: 'REQUEST_STATE' }), { qos: 0 });
                 }
             });
@@ -487,49 +517,80 @@
             mqttClient.on('message', (topic, message) => {
                 try {
                     const payload = JSON.parse(message.toString());
-                    if (topic === roomTopic && payload.type === 'ROOM_STATE') {
-                        handleRoomStateUpdate(payload);
-                    } else if (topic === resTopic) {
-                        // 老師收到學生的握手請求，立刻重新廣播題目
-                        if (payload.type === 'REQUEST_STATE' && currentRole !== 'student') {
-                            publishRoomStateMQTT();
-                        } else if (payload.studentId && currentRole !== 'student') {
-                            saveAndRenderStudentResponse(payload);
-                        }
+                    if (topic === roomTopic && payload.type === 'ROOM_STATE') handleRoomStateUpdate(payload);
+                    else if (topic === resTopic) {
+                        if (payload.type === 'REQUEST_STATE' && currentRole !== 'student') publishRoomStateCloud();
+                        else if (payload.studentId && currentRole !== 'student') saveAndRenderStudentResponse(payload);
                     }
                 } catch (err) {}
             });
 
-            mqttClient.on('reconnect', () => {
-                document.getElementById('cloud-status-dot').className = "w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse";
-                document.getElementById('cloud-status-text').innerText = `重新連線中...`;
-            });
-            
             mqttClient.on('error', (err) => {
-                document.getElementById('cloud-status-dot').className = "w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse";
-                document.getElementById('cloud-status-text').innerText = `🔴 連線被阻擋 (檢查學校網路)`;
+                fallbackToNtfy(); // 若途中遭阻擋，立刻降級備援
             });
 
-            // ❤️ 老師端「心跳包」機制：每 2 秒廣播一次確保所有 iPad 不掉線、不卡題
+            // 老師端定時心跳
             setInterval(() => {
-                if (currentRole !== 'student') publishRoomStateMQTT();
-            }, 2000);
+                if (syncMethod === 'mqtt' && currentRole !== 'student') publishRoomStateCloud();
+            }, 2500);
         }
 
-        async function publishRoomStateMQTT(clearTime = 0) {
-            if (!mqttClient || !mqttClient.connected) return;
+        // ==========================================
+        // 引擎 B：高相容 HTTP SSE (NTFY) - 絕不被擋
+        // ==========================================
+        function connectNtfy() {
+            if (sseRoom) sseRoom.close();
+            if (sseResponses) sseResponses.close();
+
             const roomTopic = `cv_room_${roomCode.toLowerCase()}`;
+            const resTopic = `cv_res_${roomCode.toLowerCase()}`;
+
+            sseRoom = new EventSource(`https://ntfy.sh/${roomTopic}/sse`);
+            sseRoom.addEventListener('message', (e) => {
+                try {
+                    const data = JSON.parse(e.data);
+                    if (data.event === 'message' && data.message) handleRoomStateUpdate(JSON.parse(data.message));
+                } catch (err) {}
+            });
+
+            if (currentRole !== 'student') {
+                sseResponses = new EventSource(`https://ntfy.sh/${resTopic}/sse`);
+                sseResponses.addEventListener('message', (e) => {
+                    try {
+                        const data = JSON.parse(e.data);
+                        if (data.event === 'message' && data.message) {
+                            const payload = JSON.parse(data.message);
+                            if (payload.studentId) saveAndRenderStudentResponse(payload);
+                            if (payload.type === 'REQUEST_STATE') publishRoomStateCloud();
+                        }
+                    } catch (err) {}
+                });
+                publishRoomStateCloud();
+            } else {
+                // 學生主動要題目
+                fetchWithRetry(`https://ntfy.sh/${resTopic}`, { method: 'POST', body: JSON.stringify({ type: 'REQUEST_STATE' }) });
+            }
+
+            sseRoom.onerror = () => setTimeout(connectNtfy, 5000);
+        }
+
+        // ==========================================
+        // 雲端資料同步共用層
+        // ==========================================
+        async function publishRoomStateCloud(clearTime = 0) {
             const payload = { type: 'ROOM_STATE', currentMode: currentMode, timerEndTime: timerEndTime, timestamp: Date.now() };
             if (clearTime > 0) payload.clearCommand = clearTime;
-            
-            // 棄用容易被伺服器阻擋的 retain: true，改為心跳包與握手請求
-            mqttClient.publish(roomTopic, JSON.stringify(payload), { qos: 0 });
+
+            if (syncMethod === 'mqtt' && mqttClient && mqttClient.connected) {
+                mqttClient.publish(`cv_room_${roomCode.toLowerCase()}`, JSON.stringify(payload), { qos: 0 });
+            } else if (syncMethod === 'ntfy') {
+                try { await fetchWithRetry(`https://ntfy.sh/cv_room_${roomCode.toLowerCase()}`, { method: 'POST', body: JSON.stringify(payload) }); } catch (e) {}
+            }
         }
 
         function handleRoomStateUpdate(payload) {
             if (payload.type !== 'ROOM_STATE') return;
             
-            // 強制清空驗證機制
             if (payload.clearCommand && payload.clearCommand > lastClearTime) {
                 lastClearTime = payload.clearCommand;
                 localResponses = {};
@@ -551,8 +612,6 @@
 
         function saveAndRenderStudentResponse(payload) {
             if (payload.clearCommand && payload.clearCommand > lastClearTime) return;
-            
-            // 防漏單：如果雲端傳來的時間戳比較舊，就忽略
             const existing = localResponses[payload.studentId];
             if (existing && existing.timestamp > payload.timestamp) return;
 
@@ -561,7 +620,7 @@
             if (currentRole !== 'student') renderTeacherDashboard(localResponses, currentMode);
         }
 
-        // 🌟 學生極速提交答案 (使用 QoS 1 保證送到老師手上，斷線會自動排隊重傳！)
+        // 🌟 學生極速提交答案 (雙引擎支援)
         async function submitAnswer(ans) {
             if (!localStudent.isLoggedIn) return showToast('請先登入！', 'warning');
             if (!ans.startsWith('data:image')) highlightSelectedAnswer(ans);
@@ -571,15 +630,18 @@
             localStorage.setItem(`class_responses_${roomCode}`, JSON.stringify(localResponses));
             if (currentRole !== 'student') renderTeacherDashboard(localResponses, currentMode);
 
+            const payload = { studentId: localStudent.id, seat: localStudent.seat, name: localStudent.name, answer: ans, timestamp: ts };
+
             if (syncMethod === 'mqtt') {
-                const resTopic = `cv_res_${roomCode.toLowerCase()}`;
-                const payload = { studentId: localStudent.id, seat: localStudent.seat, name: localStudent.name, answer: ans, timestamp: ts };
                 if (mqttClient && mqttClient.connected) {
-                    mqttClient.publish(resTopic, JSON.stringify(payload), { qos: 1 });
-                } else {
-                    // 若正在重連中，顯示警告
-                    if (mqttClient) showToast('網路極度不穩，等待連線中...', 'warning');
-                }
+                    mqttClient.publish(`cv_res_${roomCode.toLowerCase()}`, JSON.stringify(payload), { qos: 1 });
+                } else fallbackToNtfy();
+            } 
+            if (syncMethod === 'ntfy') {
+                const jitterDelay = Math.floor(Math.random() * 300);
+                setTimeout(async () => {
+                    try { await fetchWithRetry(`https://ntfy.sh/cv_res_${roomCode.toLowerCase()}`, { method: 'POST', body: JSON.stringify(payload) }); } catch (e) {}
+                }, jitterDelay);
             }
 
             if (!ans.startsWith('data:image')) {
@@ -596,7 +658,7 @@
             });
         }
 
-        // 🌟 超級壓縮畫布
+        // 超級壓縮畫布
         function getCompressedDrawing() {
             if (!canvas) return '';
             const maxWidth = 150; 
@@ -651,7 +713,7 @@
             updateStudentUIPanel(mode); updateTeacherModeButtons(mode);
             localStorage.setItem('class_room_mode', mode);
 
-            await publishRoomStateMQTT();
+            await publishRoomStateCloud();
 
             if (localStudent.isLoggedIn) {
                 clearCanvasLocal(); delete localResponses[localStudent.id];
@@ -844,7 +906,7 @@
                 studentCol.classList.remove('hidden'); teacherCol.classList.add('hidden'); document.getElementById('btn-student').classList.add('bg-white', 'text-emerald-600', 'shadow-sm', 'font-bold');
             }
 
-            if (mqttClient && mqttClient.connected) {
+            if (syncMethod === 'mqtt' && mqttClient && mqttClient.connected) {
                 const roomTopic = `cv_room_${roomCode.toLowerCase()}`;
                 const resTopic = `cv_res_${roomCode.toLowerCase()}`;
                 if (view === 'teacher' || view === 'split') mqttClient.subscribe(resTopic, { qos: 1 });
@@ -884,19 +946,19 @@
             
             localStorage.removeItem(`class_responses_${roomCode}`); localResponses = {}; clearCanvasLocal(); stopTimerLocal();
             
-            await publishRoomStateMQTT(cTime);
+            await publishRoomStateCloud(cTime);
             showToast('全班答案已清空！', 'success'); renderTeacherDashboard({}, currentMode);
         };
 
         window.toggleTimer = async function(sec) {
             timerEndTime = Date.now() + sec * 1000;
-            await publishRoomStateMQTT();
+            await publishRoomStateCloud();
             showToast(`計時 ${sec} 秒！`, 'info');
         };
 
         window.stopTimerCloud = async function() {
             timerEndTime = 0;
-            await publishRoomStateMQTT();
+            await publishRoomStateCloud();
         };
 
         window.toggleMockClass = async function() {
@@ -946,9 +1008,9 @@
             }
             
             // 學生剛登入時，主動發送一次請求，保證立刻抓到老師最新題型
-            if (mqttClient) {
-                mqttClient.publish(`cv_res_${roomCode.toLowerCase()}`, JSON.stringify({ type: 'REQUEST_STATE' }), { qos: 0 });
-            }
+            if (syncMethod === 'mqtt' && mqttClient) mqttClient.publish(`cv_res_${roomCode.toLowerCase()}`, JSON.stringify({ type: 'REQUEST_STATE' }), { qos: 0 });
+            else if (syncMethod === 'ntfy') fetchWithRetry(`https://ntfy.sh/cv_res_${roomCode.toLowerCase()}`, { method: 'POST', body: JSON.stringify({ type: 'REQUEST_STATE' }) });
+
             setTimeout(() => window.dispatchEvent(new Event('resize')), 200);
         }
         
