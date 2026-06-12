@@ -7,6 +7,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- 引入企業級物聯網連線庫 MQTT.js，解決學校網路塞車與封鎖問題 -->
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <style>
         body { font-family: 'Inter', 'Noto Sans TC', sans-serif; }
         canvas { touch-action: none; }
@@ -56,7 +58,7 @@
                 </div>
                 <div>
                     <h1 class="font-black text-xl text-slate-800 tracking-tight flex items-center gap-2 flex-wrap">
-                        ClassView <span class="text-emerald-500 font-medium text-xs bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">雲端即時版</span>
+                        ClassView <span class="text-emerald-500 font-medium text-xs bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">雲端極速版</span>
                         <span class="text-indigo-600 font-bold text-xs bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-200">匡智張玉瓊晨輝學校</span>
                     </h1>
                     <p class="text-xs text-slate-400">專為班級即時反饋設計的電子白板</p>
@@ -65,7 +67,7 @@
 
             <div class="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-full text-xs font-semibold">
                 <span id="cloud-status-dot" class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
-                <span id="cloud-status-text" class="text-slate-600">正在建立連線...</span>
+                <span id="cloud-status-text" class="text-slate-600">正在建立極速連線...</span>
             </div>
 
             <div id="role-switcher" class="bg-slate-100 p-1 rounded-xl flex gap-1 w-full sm:w-auto overflow-x-auto">
@@ -280,7 +282,7 @@
                         <div>
                             <div class="flex justify-between items-center mb-3 px-1">
                                 <h3 class="text-xs font-bold text-slate-700">👥 全班回應展示</h3>
-                                <span class="text-[10px] text-slate-400 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>極速同步中</span>
+                                <span class="text-[10px] text-slate-400 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>極速連線中</span>
                             </div>
                             <div id="student-grid" class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 gap-3 pb-8">
                                 <!-- 卡片動態注入 -->
@@ -346,39 +348,22 @@
         const urlParams = new URLSearchParams(window.location.search);
         const isForceStudent = urlParams.get('role') === 'student';
 
-        // 🌟 強化版 Fetch: 自動重試與防止伺服器 Rate Limit (429)
-        async function fetchWithRetry(url, options, retries = 4) {
-            for (let i = 0; i < retries; i++) {
-                try {
-                    const res = await fetch(url, options);
-                    if (res.ok) return res;
-                    if (res.status === 429) { // 遇到 429 限流，等待更久
-                        await new Promise(r => setTimeout(r, 1500 * (i + 1)));
-                        continue;
-                    }
-                } catch (err) {}
-                await new Promise(r => setTimeout(r, 500 * (i + 1)));
-            }
-            throw new Error('Fetch failed');
-        }
-
+        // 偵測是否具備 Firebase 設定 (本站預覽環境使用)，否則啟用 MQTT 極速通道
         try {
             if (typeof __firebase_config !== 'undefined' && __firebase_config) {
                 const firebaseConfig = JSON.parse(__firebase_config);
                 const app = initializeApp(firebaseConfig);
                 auth = getAuth(app); db = getFirestore(app); syncMethod = 'firebase';
                 if (typeof __app_id !== 'undefined' && __app_id) appId = __app_id;
-            } else { syncMethod = 'ntfy'; }
-        } catch (e) { syncMethod = 'ntfy'; }
+            } else { syncMethod = 'mqtt'; }
+        } catch (e) { syncMethod = 'mqtt'; }
 
         let isMockingEnabled = false, currentMode = 'yes_no', currentRole = 'split'; 
         let timerEndTime = 0, timerInterval = null;
+        let lastClearTime = 0; 
         
-        // 🚀 雙核連線機制變數
-        let sseRoom = null, sseResponses = null;
-        let roomPollingTimer = null, responsePollingTimer = null; 
-        let lastClearTime = 0; // 防呆清空驗證機制
-        
+        // 🚀 MQTT WebSocket 通道參數
+        let mqttClient = null;
         let localResponses = {}; 
         let localStudent = { id: 'stu_local_' + Math.random().toString(36).substr(2, 9), seat: '', name: '', isLoggedIn: false };
 
@@ -422,10 +407,8 @@
                         }
                     });
                 } catch(e) {}
-            } else if (syncMethod === 'ntfy') {
-                document.getElementById('cloud-status-dot').className = "w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse";
-                document.getElementById('cloud-status-text').innerText = `🟢 房號 ${roomCode}`;
-                connectNtfy(); // 啟動雙核機制
+            } else if (syncMethod === 'mqtt') {
+                connectMQTT(); // 啟動 MQTT 雙向長連線
             }
 
             setupCanvas();
@@ -441,6 +424,7 @@
             updateStudentUIPanel(currentMode);
         });
 
+        // 🌟 跨分頁秒級同步 (針對同台電腦雙螢幕測試的防護)
         window.addEventListener('storage', (e) => {
             if (e.key === `class_responses_${roomCode}`) {
                 try {
@@ -473,95 +457,64 @@
             document.getElementById('student-login-room-display').innerText = `房號：${roomCode}`;
         }
 
-        // 🚀 雙核雲端連線引擎：SSE 即時推送 + 高頻 2.5 秒輪詢防斷線
-        function connectNtfy() {
-            if (syncMethod !== 'ntfy') return;
-            
-            if (sseRoom) sseRoom.close(); 
-            if (sseResponses) sseResponses.close(); 
-            if (roomPollingTimer) clearInterval(roomPollingTimer);
-            if (responsePollingTimer) clearInterval(responsePollingTimer);
+        // 🚀 MQTT WebSocket 通道：穿透防火牆且無速率限制的終極方案
+        function connectMQTT() {
+            if (syncMethod !== 'mqtt') return;
 
-            // 確保頻道名稱為全小寫，防止系統不匹配
+            const options = {
+                clientId: `cyk_${roomCode}_${Math.random().toString(16).substr(2, 8)}`,
+                clean: true,
+                keepalive: 30,
+                reconnectPeriod: 2000,
+                // 配置 2 個國際公共節點作為備援。使用 443 標準防護牆穿透端口
+                servers: [
+                    { protocol: 'wss', host: 'broker.emqx.io', port: 8084, path: '/mqtt' },
+                    { protocol: 'wss', host: 'mqtt.eclipseprojects.io', port: 443, path: '/mqtt' }
+                ]
+            };
+
+            mqttClient = mqtt.connect(options);
             const roomTopic = `cyk_room_${roomCode.toLowerCase()}`;
             const resTopic = `cyk_res_${roomCode.toLowerCase()}`;
 
-            // SSE 設定
-            sseRoom = new EventSource(`https://ntfy.sh/${roomTopic}/sse`);
-            sseRoom.addEventListener('message', (e) => {
-                try {
-                    const data = JSON.parse(e.data);
-                    if (data.event === 'message' && data.message) handleRoomStateUpdate(JSON.parse(data.message));
-                } catch (err) {}
-            });
+            mqttClient.on('connect', () => {
+                document.getElementById('cloud-status-dot').className = "w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse";
+                document.getElementById('cloud-status-text').innerText = `🟢 房號 ${roomCode} (極速同步中)`;
 
-            sseResponses = new EventSource(`https://ntfy.sh/${resTopic}/sse`);
-            sseResponses.addEventListener('message', (e) => {
-                try {
-                    const data = JSON.parse(e.data);
-                    if (data.event === 'message' && data.message) {
-                        const payload = JSON.parse(data.message);
-                        if (payload.studentId && currentRole !== 'student') saveAndRenderStudentResponse(payload);
-                    }
-                } catch (err) {}
-            });
-
-            // 強制高頻輪詢 (Polling Fallbacks) - 拯救斷線 iPad
-            roomPollingTimer = setInterval(fetchLatestRoomState, 2500);
-            responsePollingTimer = setInterval(pollNtfyResponses, 2500);
-
-            sseRoom.onerror = () => { sseRoom.close(); setTimeout(connectNtfy, 4000); };
-            sseResponses.onerror = () => { sseResponses.close(); };
-        }
-
-        async function pollNtfyResponses() {
-            if (syncMethod !== 'ntfy' || currentRole === 'student') return;
-            const resTopic = `cyk_res_${roomCode.toLowerCase()}`;
-            try {
-                const res = await fetch(`https://ntfy.sh/${resTopic}/json?poll=1`);
-                const text = await res.text();
-                text.trim().split('\n').forEach(line => {
-                    if (!line) return;
-                    try {
-                        const data = JSON.parse(line);
-                        if (data.event === 'message' && data.message) {
-                            const payload = JSON.parse(data.message);
-                            if (payload.studentId) {
-                                const existing = localResponses[payload.studentId];
-                                if (!existing || existing.timestamp < payload.timestamp) saveAndRenderStudentResponse(payload);
-                            }
-                        }
-                    } catch (e) {}
-                });
-            } catch (e) {}
-        }
-
-        async function fetchLatestRoomState() {
-            if (syncMethod !== 'ntfy') return;
-            const roomTopic = `cyk_room_${roomCode.toLowerCase()}`;
-            try {
-                const res = await fetch(`https://ntfy.sh/${roomTopic}/json?poll=1`);
-                const text = await res.text();
-                const lines = text.trim().split('\n');
-                for (let i = lines.length - 1; i >= 0; i--) {
-                    if (lines[i]) {
-                        const data = JSON.parse(lines[i]);
-                        if (data.event === 'message' && data.message) {
-                            handleRoomStateUpdate(JSON.parse(data.message));
-                            break;
-                        }
-                    }
+                if (currentRole !== 'student') {
+                    mqttClient.subscribe(resTopic, { qos: 0 });
+                    publishRoomStateMQTT(); // 老師一上線就向雲端宣告當前題目
                 }
-            } catch (e) {}
+                if (currentRole === 'student' || currentRole === 'split') {
+                    mqttClient.subscribe(roomTopic, { qos: 0 });
+                }
+            });
+
+            mqttClient.on('message', (topic, message) => {
+                try {
+                    const payload = JSON.parse(message.toString());
+                    if (topic === roomTopic && payload.type === 'ROOM_STATE') {
+                        handleRoomStateUpdate(payload);
+                    } else if (topic === resTopic && payload.studentId) {
+                        if (currentRole !== 'student') saveAndRenderStudentResponse(payload);
+                    }
+                } catch (err) {}
+            });
+
+            mqttClient.on('reconnect', () => {
+                document.getElementById('cloud-status-dot').className = "w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse";
+                document.getElementById('cloud-status-text').innerText = `重新連線中...`;
+            });
         }
 
-        async function publishRoomStateNtfy(clearTime = 0) {
-            if (syncMethod !== 'ntfy') return;
+        async function publishRoomStateMQTT(clearTime = 0) {
+            if (!mqttClient || !mqttClient.connected) return;
             const roomTopic = `cyk_room_${roomCode.toLowerCase()}`;
             const payload = { type: 'ROOM_STATE', currentMode: currentMode, timerEndTime: timerEndTime, timestamp: Date.now() };
             if (clearTime > 0) payload.clearCommand = clearTime;
             
-            try { await fetchWithRetry(`https://ntfy.sh/${roomTopic}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); } catch (e) {}
+            // retain: true 代表記憶功能。學生如果遲到，一打開網頁就會瞬間收到最後的廣播題型
+            mqttClient.publish(roomTopic, JSON.stringify(payload), { qos: 0, retain: true });
         }
 
         function handleRoomStateUpdate(payload) {
@@ -588,7 +541,7 @@
         }
 
         function saveAndRenderStudentResponse(payload) {
-            if (payload.clearCommand && payload.clearCommand > lastClearTime) return; // 忽略被清空的答案
+            if (payload.clearCommand && payload.clearCommand > lastClearTime) return;
             localResponses[payload.studentId] = { seat: payload.seat || '', name: payload.name, answer: payload.answer, timestamp: payload.timestamp };
             localStorage.setItem(`class_responses_${roomCode}`, JSON.stringify(localResponses));
             if (currentRole !== 'student') renderTeacherDashboard(localResponses, currentMode);
@@ -615,27 +568,26 @@
             });
         }
 
-        // 🌟 學生送出答案核心 (含微隨機錯開避免網路塞車)
+        // 🌟 學生極速提交答案 (MQTT 無需輪詢/無需防攻擊延遲)
         async function submitAnswer(ans) {
             if (!localStudent.isLoggedIn) return showToast('請先登入！', 'warning');
             if (!ans.startsWith('data:image')) highlightSelectedAnswer(ans);
 
             const ts = Date.now();
-            // 優先本地紀錄
             localResponses[localStudent.id] = { seat: localStudent.seat, name: localStudent.name, answer: ans, timestamp: ts };
             localStorage.setItem(`class_responses_${roomCode}`, JSON.stringify(localResponses));
             if (currentRole !== 'student') renderTeacherDashboard(localResponses, currentMode);
 
             if (syncMethod === 'firebase' && db && currentUser) {
                 try { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'responses', localStudent.id), { seat: localStudent.seat, name: localStudent.name, answer: ans, timestamp: ts }); } catch (e) {}
-            } else if (syncMethod === 'ntfy') {
+            } else if (syncMethod === 'mqtt') {
                 const resTopic = `cyk_res_${roomCode.toLowerCase()}`;
                 const payload = { studentId: localStudent.id, seat: localStudent.seat, name: localStudent.name, answer: ans, timestamp: ts };
-                // 產生 0~300 毫秒隨機延遲，打散併發封包
-                const jitterDelay = Math.floor(Math.random() * 300);
-                setTimeout(async () => {
-                    try { await fetchWithRetry(`https://ntfy.sh/${resTopic}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); } catch (e) {}
-                }, jitterDelay);
+                if (mqttClient && mqttClient.connected) {
+                    mqttClient.publish(resTopic, JSON.stringify(payload), { qos: 0 });
+                } else {
+                    showToast('網路極度不穩，等待連線中...', 'warning');
+                }
             }
 
             if (!ans.startsWith('data:image')) {
@@ -665,7 +617,7 @@
             tCtx.fillStyle = '#FFFFFF'; tCtx.fillRect(0, 0, width, height);
             tCtx.drawImage(canvas, 0, 0, width, height);
             
-            return tempCanvas.toDataURL('image/jpeg', 0.2); // 使用輕量 JPEG
+            return tempCanvas.toDataURL('image/jpeg', 0.2); 
         }
 
         function submitDrawingLive() {
@@ -712,8 +664,8 @@
                     await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'room_state', 'active_state'), { currentMode: mode, timerEndTime: 0 }, { merge: true });
                     if (localStudent.isLoggedIn) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'responses', localStudent.id));
                 } catch (error) {}
-            } else if (syncMethod === 'ntfy') {
-                await publishRoomStateNtfy();
+            } else if (syncMethod === 'mqtt') {
+                await publishRoomStateMQTT();
             }
 
             if (localStudent.isLoggedIn) {
@@ -751,7 +703,6 @@
 
             Object.keys(responses).forEach(key => {
                 const res = responses[key];
-                // 過濾掉髒資料
                 if (res && res.answer !== undefined) fullList.push({ id: key, seat: res.seat || '', name: res.name, isLocal: key === localStudent.id, answer: res.answer, timestamp: res.timestamp });
             });
 
@@ -908,7 +859,14 @@
                 studentCol.classList.remove('hidden'); teacherCol.classList.add('hidden'); document.getElementById('btn-student').classList.add('bg-white', 'text-emerald-600', 'shadow-sm', 'font-bold');
             }
 
-            if (syncMethod === 'ntfy' && !isForceStudent && view !== 'student') connectNtfy();
+            // MQTT 視圖轉換自動訂閱頻道
+            if (syncMethod === 'mqtt' && mqttClient && mqttClient.connected) {
+                const roomTopic = `cyk_room_${roomCode.toLowerCase()}`;
+                const resTopic = `cyk_res_${roomCode.toLowerCase()}`;
+                if (view === 'teacher' || view === 'split') mqttClient.subscribe(resTopic, { qos: 0 });
+                if (view === 'student' || view === 'split') mqttClient.subscribe(roomTopic, { qos: 0 });
+            }
+
             setTimeout(() => { window.dispatchEvent(new Event('resize')); adjustStudentGridForMode(currentMode); }, 100);
         }
 
@@ -936,7 +894,6 @@
 
         window.switchView = switchView; window.loginStudent = loginStudent; window.logoutStudent = logoutStudent; window.submitAnswer = submitAnswer; window.setGlobalMode = setGlobalMode;
         
-        // 🌟 修正：包含時間戳的強制定步清空
         window.clearAllResponses = async function() {
             const cTime = Date.now();
             lastClearTime = cTime;
@@ -949,8 +906,8 @@
                     await Promise.all(snap.docs.map(d => deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'responses', d.id))));
                     stopTimerCloud();
                 } catch (e) {}
-            } else if (syncMethod === 'ntfy') {
-                await publishRoomStateNtfy(cTime);
+            } else if (syncMethod === 'mqtt') {
+                await publishRoomStateMQTT(cTime);
             }
             showToast('全班答案已清空！', 'success'); renderTeacherDashboard({}, currentMode);
         };
@@ -958,17 +915,16 @@
         window.toggleTimer = async function(sec) {
             timerEndTime = Date.now() + sec * 1000;
             if (syncMethod === 'firebase' && db && currentUser) { try { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'room_state', 'active_state'), { timerEndTime }, { merge: true }); } catch (e) {} }
-            else if (syncMethod === 'ntfy') await publishRoomStateNtfy(); else syncCountdownTimer(timerEndTime);
+            else if (syncMethod === 'mqtt') await publishRoomStateMQTT(); else syncCountdownTimer(timerEndTime);
             showToast(`計時 ${sec} 秒！`, 'info');
         };
 
         window.stopTimerCloud = async function() {
             timerEndTime = 0;
             if (syncMethod === 'firebase' && db && currentUser) { try { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'room_state', 'active_state'), { timerEndTime: 0 }, { merge: true }); } catch(e){} }
-            else if (syncMethod === 'ntfy') await publishRoomStateNtfy(); else stopTimerLocal();
+            else if (syncMethod === 'mqtt') await publishRoomStateMQTT(); else stopTimerLocal();
         };
 
-        // 🌟 修正：模擬學生全面改為「本機生成」，不再塞死雲端
         window.toggleMockClass = function() {
             isMockingEnabled = !isMockingEnabled;
             if (isMockingEnabled) {
@@ -1014,7 +970,6 @@
             if (localResponses[localStudent.id] && !localResponses[localStudent.id].answer.startsWith('data:image')) {
                 highlightSelectedAnswer(localResponses[localStudent.id].answer);
             }
-            if (isForceStudent || currentRole === 'student') fetchLatestRoomState(); 
             setTimeout(() => window.dispatchEvent(new Event('resize')), 200);
         }
         
