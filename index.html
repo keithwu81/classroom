@@ -105,6 +105,7 @@
                         <span class="text-5xl inline-block mb-3 animate-bounce">🎓</span>
                         <h3 class="text-xl font-bold text-slate-800">準備好回答了嗎？</h3>
                         <p class="text-sm text-slate-400 mt-1">請輸入姓名加入雲端課堂</p>
+                        <p id="student-login-room-display" class="text-xs text-indigo-500 font-bold mt-2 bg-indigo-50 py-1 rounded-lg">房號：載入中...</p>
                     </div>
                     
                     <div class="space-y-4">
@@ -138,7 +139,7 @@
                     <div id="mode-waiting" class="text-center p-6">
                         <div class="text-6xl mb-4 animate-pulse">⏳</div>
                         <h4 class="text-lg font-bold text-slate-700">等待老師發布問題...</h4>
-                        <p class="text-sm text-slate-400 mt-2">請留意投影大螢幕，當老師切換題型後會在此自動更新</p>
+                        <p class="text-sm text-slate-400 mt-2">請老師切換題型，此畫面將會實時自動更新</p>
                     </div>
 
                     <!-- 1. 剔和交叉模式 -->
@@ -251,7 +252,7 @@
                 <div class="flex items-center gap-2">
                     <span class="text-2xl">👨‍🏫</span>
                     <div>
-                        <h2 class="font-bold text-lg leading-none">老師教學控制台</h2>
+                        <h2 class="font-bold text-lg leading-none">老師教學控制台 <span id="teacher-room-display" class="bg-emerald-700 px-2 py-0.5 rounded text-sm text-yellow-300">房號: 載入中...</span></h2>
                         <span class="text-xs text-emerald-200">管理答題、統計與投影學生的作品</span>
                     </div>
                 </div>
@@ -399,48 +400,59 @@
         import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, deleteDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
         // ==========================================
-        // 1. 初始化 Firebase 雲端服務 (安全保護與離線 fallback 整合)
+        // 1. 初始化連線管道 (安全判定與零設定 NTFY 自動 Fallback)
         // ==========================================
         let db = null;
         let auth = null;
         let currentUser = null;
         let appId = 'classroom-response-board';
-
-        try {
-            if (typeof __firebase_config !== 'undefined' && __firebase_config) {
-                const firebaseConfig = JSON.parse(__firebase_config);
-                const app = initializeApp(firebaseConfig);
-                auth = getAuth(app);
-                db = getFirestore(app);
-            }
-            if (typeof __app_id !== 'undefined' && __app_id) {
-                appId = __app_id;
-            }
-        } catch (e) {
-            console.error("Firebase 初始化失敗，已切換至高效本地離線模式：", e);
-        }
-
-        let isMockingEnabled = false;
-        let currentMode = 'yes_no';
-        let currentRole = 'split'; 
-        let countdownTime = 0;
-        let timerInterval = null;
+        let syncMethod = 'local'; // 'firebase' | 'ntfy' | 'local'
+        let roomCode = '';
 
         // 解析 URL 參數 (判定是否為強制的學生沙盒模式)
         const urlParams = new URLSearchParams(window.location.search);
         const forceRole = urlParams.get('role');
         const isForceStudent = forceRole === 'student';
 
-        // 本地登入學生資訊 (移除座號，改為僅以姓名登入)
+        // 偵測與初始化 Firebase (若在本站預覽環境中則開啟，否則自動 fallback 到高相容 ntfy 零設定雲端)
+        try {
+            if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+                const firebaseConfig = JSON.parse(__firebase_config);
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+                syncMethod = 'firebase';
+                if (typeof __app_id !== 'undefined' && __app_id) {
+                    appId = __app_id;
+                }
+            } else {
+                syncMethod = 'ntfy'; // 在外部或 GitHub Pages 部署時，預設啟用極速 NTFY
+            }
+        } catch (e) {
+            console.error("Firebase 初始化失敗，已啟用 ntfy 極速雲端連線：", e);
+            syncMethod = 'ntfy';
+        }
+
+        let isMockingEnabled = false;
+        let currentMode = 'yes_no';
+        let currentRole = 'split'; 
+        let countdownTime = 0;
+        let timerEndTime = 0;
+        let timerInterval = null;
+        let sseRoom = null;
+        let sseResponses = null;
+        let localResponses = {}; // 用於 NTFY 模式在記憶體與本地儲存答案
+
+        // 本地登入學生資訊 (不含座號)
         let localStudent = {
             id: 'stu_local_' + Math.random().toString(36).substr(2, 9),
-            seat: '', // 座號預設為空
+            seat: '', 
             name: '',
             isLoggedIn: false,
             lastSubmit: null
         };
 
-        // 模擬學生名單 (保留虛擬座號，以便老師預覽全班網格排列)
+        // 模擬學生名單
         const mockStudentsList = [
             { id: 'stu_1', seat: '01', name: '陳小明' },
             { id: 'stu_2', seat: '02', name: '黃梓晴' },
@@ -459,7 +471,7 @@
             { id: 'stu_15', seat: '30', name: '盧信希' }
         ];
 
-        // 畫布
+        // 畫布與筆刷
         const canvas = document.getElementById('student-canvas');
         const ctx = canvas.getContext('2d');
         let isDrawing = false;
@@ -474,9 +486,12 @@
         let pendingDrawingData = null;
 
         // ==========================================
-        // 2. 初始化與雲端認證啟動
+        // 2. 核心初始化、房號分配與連線建立
         // ==========================================
         window.addEventListener('load', async () => {
+            // A. 初始化房間號碼 (Room Code)
+            initRoomCode();
+
             const savedStudent = localStorage.getItem('class_local_student');
             if (savedStudent) {
                 try {
@@ -487,45 +502,58 @@
                 } catch(e) {}
             }
 
-            // 安全性認證 (支援離線 Fallback)
-            const initAuth = async () => {
-                if (!auth) {
-                    updateOfflineCloudStatus();
-                    return;
-                }
-                try {
-                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                        await signInWithCustomToken(auth, __initial_auth_token);
-                    } else {
-                        await signInAnonymously(auth);
+            // B. 依連線類型建立實時連線
+            if (syncMethod === 'firebase') {
+                const initAuth = async () => {
+                    if (!auth) return;
+                    try {
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await signInWithCustomToken(auth, __initial_auth_token);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+                    } catch (e) {
+                        console.error("Firebase 登入失敗：", e);
                     }
-                } catch (e) {
-                    console.error("Firebase 登入失敗：", e);
-                    updateOfflineCloudStatus();
-                }
-            };
+                };
 
-            await initAuth();
+                await initAuth();
 
-            if (auth) {
                 onAuthStateChanged(auth, (user) => {
                     currentUser = user;
                     if (user) {
-                        // 更新雲端指示燈
                         document.getElementById('cloud-status-dot').className = "w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse";
                         document.getElementById('cloud-status-text').innerText = "🟢 雲端已連線 (即時同步中)";
                         startCloudSubscriptions();
                     } else {
-                        updateOfflineCloudStatus();
+                        document.getElementById('cloud-status-dot').className = "w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse";
+                        document.getElementById('cloud-status-text').innerText = "🔴 雲端連線失敗";
                     }
                 });
-            } else {
-                updateOfflineCloudStatus();
+            } else if (syncMethod === 'ntfy') {
+                // ntfy.sh 雲端實時建立
+                document.getElementById('cloud-status-dot').className = "w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse";
+                document.getElementById('cloud-status-text').innerText = `🟢 房號 ${roomCode} (極速雲端同步中)`;
+                
+                // 啟動 ntfy 實時長連線訂閱
+                connectNtfy();
+                
+                // 學生端一加入時，立即主動拉取一次目前最新題型
+                if (isForceStudent || currentRole === 'student') {
+                    fetchLatestRoomState();
+                }
+
+                // 老師端心跳機制：每 3 秒對雲端推送一次心跳包，確保新加入/重新載入網頁的學生的 iPad 能夠在 3 秒內立刻同步至最新題型
+                if (!isForceStudent) {
+                    setInterval(() => {
+                        publishRoomStateNtfy();
+                    }, 3000);
+                }
             }
 
             setupCanvas();
 
-            // 執行強制權限鎖定判定
+            // C. 執行強制沙盒判定
             if (isForceStudent) {
                 const switcher = document.getElementById('role-switcher');
                 if (switcher) switcher.classList.add('hidden');
@@ -538,33 +566,180 @@
             }
 
             window.dispatchEvent(new Event('resize'));
+            
+            // 修正：主動刷新一次題型，防止學生卡在「等待出題」
+            updateStudentUIPanel(currentMode);
         });
 
-        function updateOfflineCloudStatus() {
-            document.getElementById('cloud-status-dot').className = "w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse";
-            document.getElementById('cloud-status-text').innerText = "🟢 本地高速模式 (多視窗實時同步)";
+        // ==========================================
+        // 2.5 課室專屬房號配置邏輯
+        // ==========================================
+        function initRoomCode() {
+            let urlRoom = urlParams.get('room');
+            
+            if (urlRoom) {
+                roomCode = urlRoom.toUpperCase();
+            } else {
+                // 如果沒有 URL 參數，從 Session 儲存或隨機產生新課室代碼
+                let savedRoom = sessionStorage.getItem('cyk_current_room');
+                if (savedRoom) {
+                    roomCode = savedRoom;
+                } else {
+                    roomCode = 'CYK' + Math.floor(100000 + Math.random() * 900000); // 隨機生成專屬房號
+                    sessionStorage.setItem('cyk_current_room', roomCode);
+                }
+                
+                // 動態替換 URL，不刷新頁面，方便分享與部署
+                const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?room=' + roomCode + (isForceStudent ? '&role=student' : '');
+                window.history.replaceState({ path: newUrl }, '', newUrl);
+            }
+
+            // 更新 UI 上的房號標籤
+            document.getElementById('teacher-room-display').innerText = `房號: ${roomCode}`;
+            document.getElementById('student-login-room-display').innerText = `房號：${roomCode}`;
         }
 
         // ==========================================
-        // 3. 雲端實時監聽
+        // 3. NTFY 實時廣播通道與手寫畫布傳遞
+        // ==========================================
+        function connectNtfy() {
+            if (syncMethod !== 'ntfy') return;
+
+            // 關閉既有長連線
+            if (sseRoom) sseRoom.close();
+            if (sseResponses) sseResponses.close();
+
+            const roomTopic = `cyk_classview_room_${roomCode}`;
+            const responsesTopic = `cyk_classview_responses_${roomCode}`;
+
+            // 1. 學生/老師 訂閱房態變化
+            sseRoom = new EventSource(`https://ntfy.sh/${roomTopic}/sse`);
+            sseRoom.addEventListener('message', (e) => {
+                try {
+                    const data = JSON.parse(e.data);
+                    if (data.event === 'message' && data.message) {
+                        const payload = JSON.parse(data.message);
+                        if (payload.type === 'ROOM_STATE') {
+                            handleRoomStateUpdate(payload);
+                        }
+                    }
+                } catch (err) {}
+            });
+
+            // 2. 老師 訂閱學生提交的答案與手寫白板
+            if (!isForceStudent && (currentRole === 'split' || currentRole === 'teacher')) {
+                sseResponses = new EventSource(`https://ntfy.sh/${responsesTopic}/sse`);
+                sseResponses.addEventListener('message', (e) => {
+                    try {
+                        const data = JSON.parse(e.data);
+                        if (data.event === 'message' && data.message) {
+                            const payload = JSON.parse(data.message);
+                            if (payload.studentId) {
+                                saveAndRenderStudentResponse(payload);
+                            }
+                        }
+                    } catch (err) {}
+                });
+            }
+
+            // 自動重連
+            sseRoom.onerror = () => {
+                setTimeout(connectNtfy, 5000);
+            };
+        }
+
+        // 學生主動向雲端拉取快照狀態
+        async function fetchLatestRoomState() {
+            if (syncMethod !== 'ntfy') return;
+            try {
+                const response = await fetch(`https://ntfy.sh/cyk_classview_room_${roomCode}/json?poll=1`);
+                const text = await response.text();
+                const lines = text.trim().split('\n');
+                for (let i = lines.length - 1; i >= 0; i--) {
+                    if (lines[i]) {
+                        const data = JSON.parse(lines[i]);
+                        if (data.event === 'message' && data.message) {
+                            const payload = JSON.parse(data.message);
+                            if (payload.type === 'ROOM_STATE') {
+                                handleRoomStateUpdate(payload);
+                                break;
+                            }
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error("拉取雲端狀態快照失敗:", e);
+            }
+        }
+
+        // 老師廣播房態
+        async function publishRoomStateNtfy() {
+            if (syncMethod !== 'ntfy') return;
+            const roomTopic = `cyk_classview_room_${roomCode}`;
+            const payload = {
+                type: 'ROOM_STATE',
+                currentMode: currentMode,
+                timerEndTime: timerEndTime,
+                timestamp: Date.now()
+            };
+            try {
+                await fetch(`https://ntfy.sh/${roomTopic}`, {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+            } catch (e) {}
+        }
+
+        // 處理接收到的雲端房態變化
+        function handleRoomStateUpdate(payload) {
+            if (payload.currentMode && payload.currentMode !== currentMode) {
+                currentMode = payload.currentMode;
+                updateStudentUIPanel(currentMode);
+                updateTeacherModeButtons(currentMode);
+            }
+            if (payload.timerEndTime) {
+                const remaining = Math.round((payload.timerEndTime - Date.now()) / 1000);
+                if (remaining > 0) {
+                    syncCountdownTimer(payload.timerEndTime);
+                } else {
+                    stopTimerLocal();
+                }
+            } else {
+                stopTimerLocal();
+            }
+            if (payload.clearCommand) {
+                clearCanvasLocal();
+            }
+        }
+
+        // 老師接收學生提交並本地暫存渲染
+        function saveAndRenderStudentResponse(payload) {
+            localResponses[payload.studentId] = {
+                seat: payload.seat || '',
+                name: payload.name,
+                answer: payload.answer,
+                timestamp: payload.timestamp
+            };
+            // 備份在 localStorage，不怕重新整理
+            localStorage.setItem(`class_responses_${roomCode}`, JSON.stringify(localResponses));
+            renderTeacherDashboard(localResponses, currentMode);
+        }
+
+        // ==========================================
+        // 3.2 Firebase 雲端實時監聽 (僅在預覽環境下工作)
         // ==========================================
         function startCloudSubscriptions() {
-            if (!db || !currentUser) return;
+            if (syncMethod !== 'firebase' || !db || !currentUser) return;
 
-            // 監聽房間狀態 (目前模式, 倒計時等)
             const roomStateRef = doc(db, 'artifacts', appId, 'public', 'data', 'room_state', 'active_state');
             onSnapshot(roomStateRef, (snapshot) => {
                 if (snapshot.exists()) {
                     const data = snapshot.data();
-                    
-                    // 切換至對應的學生題型面板
                     if (data.currentMode && data.currentMode !== currentMode) {
                         currentMode = data.currentMode;
                         updateStudentUIPanel(currentMode);
                         updateTeacherModeButtons(currentMode);
                     }
-
-                    // 雲端計時器監聽
                     if (data.timerEndTime) {
                         const remaining = Math.round((data.timerEndTime - Date.now()) / 1000);
                         if (remaining > 0) {
@@ -576,9 +751,8 @@
                         stopTimerLocal();
                     }
                 }
-            }, (error) => console.error("RoomState 訂閱錯誤: ", error));
+            });
 
-            // 監聽全班作答
             const responsesRef = collection(db, 'artifacts', appId, 'public', 'data', 'responses');
             onSnapshot(responsesRef, (snapshot) => {
                 let responses = {};
@@ -586,34 +760,16 @@
                     responses[doc.id] = doc.data();
                 });
                 renderTeacherDashboard(responses, currentMode);
-            }, (error) => console.error("Responses 訂閱錯誤: ", error));
+            });
         }
-
-        // 離線本地同步監聽 (多視窗 LocalStorage 連動)
-        setInterval(() => {
-            if (!db || !currentUser) {
-                const savedMode = localStorage.getItem('class_room_mode') || 'yes_no';
-                if (savedMode !== currentMode) {
-                    currentMode = savedMode;
-                    updateStudentUIPanel(currentMode);
-                    updateTeacherModeButtons(currentMode);
-                }
-
-                let responses = {};
-                const savedResponses = localStorage.getItem('class_responses');
-                if (savedResponses) {
-                    try { responses = JSON.parse(savedResponses); } catch(e) {}
-                }
-                renderTeacherDashboard(responses, currentMode);
-            }
-        }, 1000);
 
         // ==========================================
         // 3.5 動態生成學生二維碼與專屬網址
         // ==========================================
         function generateStudentQRCode() {
             try {
-                const studentUrl = window.location.origin + window.location.pathname + "?role=student";
+                // QR碼內自動注入正確的 Room Code 房號
+                const studentUrl = window.location.origin + window.location.pathname + `?room=${roomCode}&role=student`;
                 const qrContainer = document.getElementById('qrcode');
                 const urlInput = document.getElementById('student-url-display');
 
@@ -659,22 +815,7 @@
                 return;
             }
 
-            // A. 本地 LocalStorage 備份，保證本地多視窗同步工作
-            let responses = {};
-            const savedResponses = localStorage.getItem('class_responses');
-            if (savedResponses) {
-                try { responses = JSON.parse(savedResponses); } catch(e) {}
-            }
-            responses[localStudent.id] = {
-                seat: localStudent.seat,
-                name: localStudent.name,
-                answer: ans,
-                timestamp: Date.now()
-            };
-            localStorage.setItem('class_responses', JSON.stringify(responses));
-
-            // B. 雲端即時同步
-            if (db && currentUser) {
+            if (syncMethod === 'firebase' && db && currentUser) {
                 try {
                     const responseDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'responses', localStudent.id);
                     await setDoc(responseDocRef, {
@@ -684,29 +825,60 @@
                         timestamp: Date.now()
                     });
                 } catch (error) {
-                    console.error("提交答案到雲端失敗：", error);
+                    console.error("提交至 Firebase 失敗:", error);
+                }
+            } else if (syncMethod === 'ntfy') {
+                const responsesTopic = `cyk_classview_responses_${roomCode}`;
+                const payload = {
+                    studentId: localStudent.id,
+                    seat: localStudent.seat,
+                    name: localStudent.name,
+                    answer: ans,
+                    timestamp: Date.now()
+                };
+                try {
+                    await fetch(`https://ntfy.sh/${responsesTopic}`, {
+                        method: 'POST',
+                        body: JSON.stringify(payload)
+                    });
+                } catch (e) {
+                    console.error("提交至 ntfy 失敗:", e);
                 }
             }
+
+            // A. 本地 LocalStorage 備份，保證本地多視窗同步工作
+            let responses = {};
+            const savedResponses = localStorage.getItem(`class_responses_${roomCode}`);
+            if (savedResponses) {
+                try { responses = JSON.parse(savedResponses); } catch(e) {}
+            }
+            responses[localStudent.id] = {
+                seat: localStudent.seat,
+                name: localStudent.name,
+                answer: ans,
+                timestamp: Date.now()
+            };
+            localStorage.setItem(`class_responses_${roomCode}`, JSON.stringify(responses));
 
             if (!ans.startsWith('data:image')) {
                 showToast(`答案 "${ans}" 提交成功！`, 'success');
             }
 
-            if (!db || !currentUser) {
+            if (syncMethod !== 'firebase' && syncMethod !== 'ntfy') {
                 renderTeacherDashboard(responses, currentMode);
             }
         }
 
         // ==========================================
-        // 5. 畫布即時流暢同步機制
+        // 5. 畫布即時同步 (加入 ntfy 防抖傳送)
         // ==========================================
         function submitDrawingLive() {
             if (!localStudent.isLoggedIn) return;
             const dataUrl = canvas.toDataURL('image/png', 0.4); 
             
-            // 本地更新
+            // 1. 先更新本機備份
             let responses = {};
-            const savedResponses = localStorage.getItem('class_responses');
+            const savedResponses = localStorage.getItem(`class_responses_${roomCode}`);
             if (savedResponses) {
                 try { responses = JSON.parse(savedResponses); } catch(e) {}
             }
@@ -716,13 +888,9 @@
                 answer: dataUrl,
                 timestamp: Date.now()
             };
-            localStorage.setItem('class_responses', JSON.stringify(responses));
+            localStorage.setItem(`class_responses_${roomCode}`, JSON.stringify(responses));
 
-            if (!db || !currentUser) {
-                renderTeacherDashboard(responses, currentMode);
-                return;
-            }
-
+            // 2. 進行防抖/排隊寫入雲端 (針對手寫流量優化)
             if (isWritingDrawing) {
                 pendingDrawingData = dataUrl;
                 return;
@@ -732,17 +900,7 @@
 
         async function writeDrawingToCloud(dataUrl) {
             isWritingDrawing = true;
-            try {
-                const responseDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'responses', localStudent.id);
-                await setDoc(responseDocRef, {
-                    seat: localStudent.seat,
-                    name: localStudent.name,
-                    answer: dataUrl,
-                    timestamp: Date.now()
-                });
-            } catch (e) {
-                console.error("畫作同步雲端失敗", e);
-            }
+            await submitAnswer(dataUrl);
             isWritingDrawing = false;
             
             if (pendingDrawingData) {
@@ -758,43 +916,43 @@
         async function setGlobalMode(mode) {
             currentMode = mode;
 
-            // A. 100% 瞬間更新本地 UI
+            // A. 100% 瞬間更新本地 UI，不再有任何卡頓！
             updateStudentUIPanel(mode);
             updateTeacherModeButtons(mode);
             localStorage.setItem('class_room_mode', mode);
 
-            // B. 背景異步寫入雲端
-            if (db && currentUser) {
+            // B. 異步推送到對應的雲端管道
+            if (syncMethod === 'firebase' && db && currentUser) {
                 try {
                     const roomStateRef = doc(db, 'artifacts', appId, 'public', 'data', 'room_state', 'active_state');
                     setDoc(roomStateRef, {
                         currentMode: mode,
                         timerEndTime: 0 
-                    }, { merge: true }).catch(e => console.error("雲端模式寫入失敗：", e));
+                    }, { merge: true }).catch(e => {});
 
                     if (localStudent.isLoggedIn) {
                         deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'responses', localStudent.id)).catch(e => {});
                     }
-                } catch (error) {
-                    console.error("更變雲端狀態錯誤: ", error);
-                }
+                } catch (error) {}
+            } else if (syncMethod === 'ntfy') {
+                await publishRoomStateNtfy();
             }
 
             // 清理本地作答資料，開啟新一輪
             if (localStudent.isLoggedIn) {
                 clearCanvasLocal();
                 let responses = {};
-                const savedResponses = localStorage.getItem('class_responses');
+                const savedResponses = localStorage.getItem(`class_responses_${roomCode}`);
                 if (savedResponses) {
                     try { responses = JSON.parse(savedResponses); } catch(e) {}
                 }
                 delete responses[localStudent.id];
-                localStorage.setItem('class_responses', JSON.stringify(responses));
+                localStorage.setItem(`class_responses_${roomCode}`, JSON.stringify(responses));
             }
 
             if (isMockingEnabled) {
                 await autoFillMockAnswers(mode);
-            } else if (!db || !currentUser) {
+            } else if (syncMethod === 'local') {
                 renderTeacherDashboard({}, mode);
             }
 
@@ -816,12 +974,13 @@
         // ==========================================
         async function clearAllResponses() {
             // A. 本地清理
-            localStorage.removeItem('class_responses');
+            localStorage.removeItem(`class_responses_${roomCode}`);
+            localResponses = {};
             clearCanvasLocal();
             stopTimerLocal();
 
             // B. 雲端批次清理
-            if (db && currentUser) {
+            if (syncMethod === 'firebase' && db && currentUser) {
                 try {
                     showToast('正在清空雲端答題記錄...', 'info');
                     const responsesRef = collection(db, 'artifacts', appId, 'public', 'data', 'responses');
@@ -832,52 +991,68 @@
                         deletePromises.push(deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'responses', document.id)));
                     });
                     await Promise.all(deletePromises);
-                    
-                    // 清除雲端計時器
                     stopTimerCloud();
                 } catch (error) {
                     console.error("雲端清空失敗: ", error);
                 }
+            } else if (syncMethod === 'ntfy') {
+                // 向學生推送清除指令
+                const roomTopic = `cyk_classview_room_${roomCode}`;
+                const payload = {
+                    type: 'ROOM_STATE',
+                    currentMode: currentMode,
+                    timerEndTime: 0,
+                    clearCommand: Date.now(),
+                    timestamp: Date.now()
+                };
+                try {
+                    await fetch(`https://ntfy.sh/${roomTopic}`, {
+                        method: 'POST',
+                        body: JSON.stringify(payload)
+                    });
+                    
+                    // 清空雲端 responses 頻道 (透過向 responses 推送空置)
+                    const responsesTopic = `cyk_classview_responses_${roomCode}`;
+                    await fetch(`https://ntfy.sh/${responsesTopic}?clear=1`, { method: 'POST' });
+                } catch (e) {}
             }
 
             showToast('全班答案已成功清空！', 'success');
-            
-            if (!db || !currentUser) {
-                renderTeacherDashboard({}, currentMode);
-            }
+            renderTeacherDashboard({}, currentMode);
         }
 
         // ==========================================
         // 8. 倒數計時同步
         // ==========================================
         async function toggleTimer(seconds) {
-            const endTime = Date.now() + (seconds * 1000);
+            timerEndTime = Date.now() + (seconds * 1000);
             
-            if (db && currentUser) {
+            if (syncMethod === 'firebase' && db && currentUser) {
                 try {
                     const roomStateRef = doc(db, 'artifacts', appId, 'public', 'data', 'room_state', 'active_state');
                     await setDoc(roomStateRef, {
-                        timerEndTime: endTime
+                        timerEndTime: timerEndTime
                     }, { merge: true });
-                } catch (error) {
-                    console.error("啟動雲端計時器錯誤: ", error);
-                }
+                } catch (error) {}
+            } else if (syncMethod === 'ntfy') {
+                await publishRoomStateNtfy();
             } else {
-                syncCountdownTimer(endTime);
+                syncCountdownTimer(timerEndTime);
             }
             showToast(`計時器已啟動 ${seconds} 秒！`, 'info');
         }
 
         async function stopTimerCloud() {
-            if (db && currentUser) {
+            timerEndTime = 0;
+            if (syncMethod === 'firebase' && db && currentUser) {
                 try {
                     const roomStateRef = doc(db, 'artifacts', appId, 'public', 'data', 'room_state', 'active_state');
                     await setDoc(roomStateRef, {
                         timerEndTime: 0
                     }, { merge: true });
-                } catch (error) {
-                    console.error("停止雲端計時器錯誤: ", error);
-                }
+                } catch (error) {}
+            } else if (syncMethod === 'ntfy') {
+                await publishRoomStateNtfy();
             } else {
                 stopTimerLocal();
             }
@@ -926,35 +1101,42 @@
                 
                 // 清除本地模擬數據
                 let responses = {};
-                const savedResponses = localStorage.getItem('class_responses');
+                const savedResponses = localStorage.getItem(`class_responses_${roomCode}`);
                 if (savedResponses) {
                     try { responses = JSON.parse(savedResponses); } catch(e) {}
                 }
                 mockStudentsList.forEach(mock => {
                     delete responses[mock.id];
+                    delete localResponses[mock.id];
                 });
-                localStorage.setItem('class_responses', JSON.stringify(responses));
+                localStorage.setItem(`class_responses_${roomCode}`, JSON.stringify(responses));
 
                 // 清除雲端數據
-                if (db && currentUser) {
+                if (syncMethod === 'firebase' && db && currentUser) {
                     const deletePromises = [];
                     mockStudentsList.forEach(mock => {
                         deletePromises.push(deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'responses', mock.id)));
                     });
                     await Promise.all(deletePromises);
+                } else if (syncMethod === 'ntfy') {
+                    // 發送空回答覆蓋
+                    const responsesTopic = `cyk_classview_responses_${roomCode}`;
+                    mockStudentsList.forEach(async mock => {
+                        await fetch(`https://ntfy.sh/${responsesTopic}`, {
+                            method: 'POST',
+                            body: JSON.stringify({ studentId: mock.id, seat: mock.seat, name: mock.name, answer: '', timestamp: Date.now() })
+                        });
+                    });
                 }
                 
                 showToast('已將模擬學生自課堂移除。', 'info');
-                
-                if (!db || !currentUser) {
-                    renderTeacherDashboard(responses, currentMode);
-                }
+                renderTeacherDashboard(responses, currentMode);
             }
         }
 
         async function autoFillMockAnswers(mode) {
             let responses = {};
-            const savedResponses = localStorage.getItem('class_responses');
+            const savedResponses = localStorage.getItem(`class_responses_${roomCode}`);
             if (savedResponses) {
                 try { responses = JSON.parse(savedResponses); } catch(e) {}
             }
@@ -980,8 +1162,9 @@
                     answer: generatedAnswer,
                     timestamp: Date.now()
                 };
+                localResponses[student.id] = responses[student.id];
 
-                if (db && currentUser) {
+                if (syncMethod === 'firebase' && db && currentUser) {
                     const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'responses', student.id);
                     writePromises.push(setDoc(docRef, {
                         seat: student.seat,
@@ -989,15 +1172,59 @@
                         answer: generatedAnswer,
                         timestamp: Date.now()
                     }));
+                } else if (syncMethod === 'ntfy') {
+                    const responsesTopic = `cyk_classview_responses_${roomCode}`;
+                    writePromises.push(
+                        fetch(`https://ntfy.sh/${responsesTopic}`, {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                studentId: student.id,
+                                seat: student.seat,
+                                name: student.name,
+                                answer: generatedAnswer,
+                                timestamp: Date.now()
+                            })
+                        })
+                    );
                 }
             });
 
-            localStorage.setItem('class_responses', JSON.stringify(responses));
-            if (db && currentUser) {
+            localStorage.setItem(`class_responses_${roomCode}`, JSON.stringify(responses));
+            if (syncMethod === 'firebase' || syncMethod === 'ntfy') {
                 await Promise.all(writePromises);
             } else {
                 renderTeacherDashboard(responses, mode);
             }
+        }
+
+        function createMockCanvasDrawing(name, seat) {
+            const mCanvas = document.createElement('canvas');
+            mCanvas.width = 240;
+            mCanvas.height = 180;
+            const mCtx = mCanvas.getContext('2d');
+            mCtx.fillStyle = '#FFFFFF';
+            mCtx.fillRect(0, 0, 240, 180);
+            mCtx.lineWidth = 3;
+            mCtx.lineCap = 'round';
+
+            const rand = Math.random();
+            if (rand < 0.3) {
+                mCtx.strokeStyle = '#ef4444';
+                mCtx.beginPath(); mCtx.arc(120, 90, 45, 0, Math.PI * 2); mCtx.stroke();
+                mCtx.beginPath(); mCtx.arc(100, 75, 4, 0, Math.PI * 2, true); mCtx.arc(140, 75, 4, 0, Math.PI * 2, true); mCtx.fillStyle = '#ef4444'; mCtx.fill();
+                mCtx.beginPath(); mCtx.arc(120, 95, 20, 0, Math.PI, false); mCtx.stroke();
+            } else if (rand < 0.6) {
+                mCtx.strokeStyle = '#3b82f6';
+                mCtx.beginPath(); mCtx.arc(120, 80, 20, 0, Math.PI * 2); mCtx.stroke();
+                mCtx.fillStyle = '#facc15'; mCtx.fill();
+                mCtx.strokeStyle = '#10b981';
+                mCtx.beginPath(); mCtx.moveTo(120, 100); mCtx.lineTo(120, 160); mCtx.stroke();
+            } else {
+                mCtx.strokeStyle = '#000000';
+                mCtx.strokeRect(90, 90, 70, 60);
+                mCtx.beginPath(); mCtx.moveTo(90, 90); mCtx.lineTo(125, 50); mCtx.lineTo(160, 90); mCtx.closePath(); mCtx.stroke();
+            }
+            return mCanvas.toDataURL('image/png', 0.5);
         }
 
         // ==========================================
@@ -1014,7 +1241,7 @@
                 const res = responses[key];
                 fullList.push({
                     id: key,
-                    seat: res.seat || '', // 允許座號為空
+                    seat: res.seat || '', 
                     name: res.name,
                     isLocal: key === localStudent.id,
                     answer: res.answer,
@@ -1271,12 +1498,20 @@
             lastX = currentX;
             lastY = currentY;
 
-            submitDrawingLive();
+            // 節流：在繪圖滑動中每隔 1500 毫秒同步一次雲端，保證流暢又不塞車
+            if (!drawThrottleTimeout) {
+                drawThrottleTimeout = setTimeout(() => {
+                    submitDrawingLive();
+                    drawThrottleTimeout = null;
+                }, 1500);
+            }
         }
+        let drawThrottleTimeout = null;
 
         function stopDrawing() {
             if (isDrawing) {
                 isDrawing = false;
+                // 滑鼠放開或觸控結束時，強制觸核 final 版上傳，確保手寫細節 100% 上傳成功
                 submitDrawingLive();
             }
         }
@@ -1292,7 +1527,7 @@
                 return;
             }
 
-            localStudent.seat = ''; // 真實學生不再使用座號，保持為空
+            localStudent.seat = ''; 
             localStudent.name = name;
             localStudent.isLoggedIn = true;
             localStudent.lastSubmit = null;
@@ -1301,6 +1536,9 @@
             showStudentWorkspace();
             showToast(`登入成功！歡迎 ${localStudent.name} 進入課堂。`, 'success');
             
+            // 學生登入成功後，立刻請求拉取一次最新的老師題型與計時器，不用乾等
+            fetchLatestRoomState();
+
             setTimeout(() => {
                 window.dispatchEvent(new Event('resize'));
             }, 200);
@@ -1384,6 +1622,11 @@
                 studentCol.classList.remove('hidden');
                 teacherCol.classList.add('hidden');
                 btnStudent.className = btnActive;
+            }
+
+            // 切換視圖後，如果目前處於 NTFY 模式且切換成了老師端，建立對應 Responses 監聽
+            if (syncMethod === 'ntfy') {
+                connectNtfy();
             }
 
             setTimeout(() => {
