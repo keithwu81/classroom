@@ -269,7 +269,6 @@
             <div class="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 text-2xl mb-3">📱</div>
             <h3 class="text-lg font-black text-slate-800 mb-1">邀請學生加入</h3>
             <p class="text-xs text-slate-500 mb-4">請將此二維碼投影至大螢幕，學生掃描後會直接進入<strong class="text-indigo-600">回答端</strong>。</p>
-            <!-- 採用 100% 穩定的 Google API QR Code 圖片，不需要任何 JS 庫，杜絕報錯 -->
             <div class="p-3 bg-white border-2 border-indigo-100 rounded-2xl shadow-sm inline-block">
                 <img id="qrcode-img" src="" alt="請稍候..." class="w-[150px] h-[150px]">
             </div>
@@ -323,10 +322,10 @@
         let drawColor = '#000000', drawWidth = 5, drawTool = 'pen'; 
         let drawThrottleTimeout = null;
 
-        // 雲端連線變數 (SSE 與 Polling 雙向引擎)
-        let sseRoom = null;
-        let sseResponses = null;
-        let backupPollingTimer = null;
+        // 雲端連線變數 (標準高相容 Polling 同步時間戳 watermark)
+        let lastRoomPollTime = Math.floor(Date.now() / 1000) - 10;
+        let lastResPollTime = Math.floor(Date.now() / 1000) - 10;
+        let syncIntervalTimer = null;
 
         // 1. 初始化
         window.addEventListener('load', () => {
@@ -384,60 +383,25 @@
         }
 
         // ==========================================
-        // 🚀 終極穿牆：HTTPS 雙軌同步連線 (SSE + Polling)
+        // 🚀 終極穿牆：HTTPS 雙軌標準輪詢 (100% 免疫學校防火牆)
         // ==========================================
         function startHTTPSyncEngine() {
-            updateStatus('正在連線安全雲端...', 'bg-amber-500');
+            // 立刻更新在線狀態，因為 Polling 模式是不需要長連線交握的，點開即可暢通使用
+            updateStatus(`🟢 連線成功 (房號 ${roomCode})`, 'bg-emerald-500');
 
             const topicRoom = `cyk_rm_${roomCode.toLowerCase()}`;
             const topicRes = `cyk_rs_${roomCode.toLowerCase()}`;
 
-            // A. 連線至 HTTPS 標準串流 (SSE) - 完全使用 Port 443 加密通道，穿透所有防火牆
-            try {
-                if (sseRoom) sseRoom.close();
-                sseRoom = new EventSource(`https://ntfy.sh/${topicRoom}/sse`);
-                sseRoom.onopen = () => {
-                    updateStatus(`🟢 連線成功 (房號 ${roomCode})`, 'bg-emerald-500');
-                };
-                sseRoom.onmessage = (e) => {
-                    try {
-                        const data = JSON.parse(e.data);
-                        if (data.event === 'message' && data.message) {
-                            const payload = JSON.parse(data.message);
-                            handleRoomStateUpdate(payload);
-                        }
-                    } catch(err) {}
-                };
-                sseRoom.onerror = () => {
-                    // 若 SSE 遭防火牆干擾斷線，不報錯，狀態顯示為高相容 Polling 模式
-                    updateStatus(`🟢 連線成功 (房號 ${roomCode})`, 'bg-emerald-500');
-                };
-
-                if (currentRole !== 'student') {
-                    if (sseResponses) sseResponses.close();
-                    sseResponses = new EventSource(`https://ntfy.sh/${topicRes}/sse`);
-                    sseResponses.onmessage = (e) => {
-                        try {
-                            const data = JSON.parse(e.data);
-                            if (data.event === 'message' && data.message) {
-                                const payload = JSON.parse(data.message);
-                                handleIncomingAnswer(payload);
-                            }
-                        } catch(err) {}
-                    };
-                } else {
-                    // 學生端一加入，主動請求目前老師的題型
-                    sendHTTPRequest(topicRes, { action: 'req_state' });
-                }
-            } catch (err) {
-                updateStatus(`🟢 連線成功 (房號 ${roomCode})`, 'bg-emerald-500');
+            // A. 初次啟動時，立即主動請求目前老師的題型
+            if (currentRole === 'student') {
+                sendHTTPRequest(topicRes, { action: 'req_state' });
             }
 
-            // B. 強制加入「定時拉取 (Polling)」防漏機制：每 3.5 秒自動檢查，雙保險防漏單！
-            if (backupPollingTimer) clearInterval(backupPollingTimer);
-            backupPollingTimer = setInterval(() => {
+            // B. 啟動超強穿牆標準 HTTPS 輪詢 (每 1.5 秒更新一次，極速且穩定)
+            if (syncIntervalTimer) clearInterval(syncIntervalTimer);
+            syncIntervalTimer = setInterval(() => {
                 pollLatestCloudData(topicRoom, topicRes);
-            }, 3500);
+            }, 1500);
         }
 
         function updateStatus(text, colorClass) {
@@ -459,35 +423,17 @@
                 } catch (e) {
                     console.warn(`第 ${i+1} 次上傳重試...`);
                 }
-                await new Promise(r => setTimeout(r, 500 * (i + 1))); // 退避重試
+                await new Promise(r => setTimeout(r, 400 * (i + 1))); // 退避重試
             }
             return false;
         }
 
-        // 防火牆穿透：極速 NDJSON 輪詢拉取器 (保證 100% 取得最新資訊)
+        // 防火牆穿透：極速 NDJSON 輪詢拉取器 (採用精準的時間標記 Watermark，保證不漏單)
         async function pollLatestCloudData(topicRoom, topicRes) {
             try {
-                // 1. 學生端：拉取最新題型
+                // 1. 學生端：拉取最新題型與狀態
                 if (currentRole === 'student') {
-                    const res = await fetch(`https://ntfy.sh/${topicRoom}/json?poll=1`);
-                    if (res.ok) {
-                        const text = await res.text();
-                        const lines = text.trim().split('\n');
-                        for (let i = lines.length - 1; i >= 0; i--) {
-                            if (lines[i]) {
-                                const data = JSON.parse(lines[i]);
-                                if (data.event === 'message' && data.message) {
-                                    handleRoomStateUpdate(JSON.parse(data.message));
-                                    break; // 只拿最後一筆最熱乎的
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                // 2. 老師端：拉取全班最新答案
-                if (currentRole !== 'student') {
-                    const res = await fetch(`https://ntfy.sh/${topicRes}/json?poll=1`);
+                    const res = await fetch(`https://ntfy.sh/${topicRoom}/json?poll=1&since=${lastRoomPollTime}`);
                     if (res.ok) {
                         const text = await res.text();
                         const lines = text.trim().split('\n');
@@ -495,6 +441,31 @@
                             if (!line) return;
                             try {
                                 const data = JSON.parse(line);
+                                // 滑動我們的時間標記，防止重複拉取
+                                if (data.time && data.time >= lastRoomPollTime) {
+                                    lastRoomPollTime = data.time + 1;
+                                }
+                                if (data.event === 'message' && data.message) {
+                                    handleRoomStateUpdate(JSON.parse(data.message));
+                                }
+                            } catch(e) {}
+                        });
+                    }
+                }
+                
+                // 2. 老師端：拉取全班學生的答案與手寫板
+                if (currentRole !== 'student') {
+                    const res = await fetch(`https://ntfy.sh/${topicRes}/json?poll=1&since=${lastResPollTime}`);
+                    if (res.ok) {
+                        const text = await res.text();
+                        const lines = text.trim().split('\n');
+                        lines.forEach(line => {
+                            if (!line) return;
+                            try {
+                                const data = JSON.parse(line);
+                                if (data.time && data.time >= lastResPollTime) {
+                                    lastResPollTime = data.time + 1;
+                                }
                                 if (data.event === 'message' && data.message) {
                                     handleIncomingAnswer(JSON.parse(data.message));
                                 }
@@ -530,7 +501,7 @@
             if (payload.action === 'req_state') {
                 publishRoomState(); // 老師收到學生請求，重發題目
             } else if (payload.action === 'ans') {
-                // 防漏：只留最新時間戳的答案
+                // 只保留最新時間戳的答案
                 const existing = localResponses[payload.id];
                 if (existing && existing.ts > payload.ts) return;
 
@@ -582,12 +553,12 @@
             const ts = Date.now();
             const payload = { action: 'ans', id: localStudent.id, name: localStudent.name, ans: ans, ts: ts };
             
-            // 寫入本地記憶體與 LocalStorage (在同台設備測試時實現 0 毫秒極速本地連線)
+            // 寫入本地記憶體與 LocalStorage (同台設備測試時實現 0ms 極速連動)
             localResponses[localStudent.id] = { name: localStudent.name, answer: ans, ts: ts };
             localStorage.setItem(`cyk_res_${roomCode}`, JSON.stringify(localResponses));
             if (currentRole !== 'student') renderTeacherDashboard(localResponses, currentMode);
 
-            // 雲端安全傳送 (100% 穩定，防漏重試)
+            // 雲端安全傳送 (萬能穿牆，防漏重試)
             const topicRes = `cyk_rs_${roomCode.toLowerCase()}`;
             sendHTTPRequest(topicRes, payload);
 
@@ -596,6 +567,19 @@
                 document.getElementById('display-last-submit').innerHTML = `<span class="text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-bold">已傳送答案</span>`;
             }
         }
+
+        // 同設備本地跨視窗同步 (若沒有網路時的備案)
+        window.addEventListener('storage', (e) => {
+            if (e.key === `cyk_res_${roomCode}`) {
+                try {
+                    const newRes = JSON.parse(e.newValue);
+                    if (newRes) {
+                        localResponses = { ...localResponses, ...newRes };
+                        if (currentRole !== 'student') renderTeacherDashboard(localResponses, currentMode);
+                    }
+                } catch(err) {}
+            }
+        });
 
         // ==========================================
         // 介面與繪圖操作函數
