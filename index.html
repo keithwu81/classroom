@@ -45,7 +45,7 @@
                 <div>
                     <h1 class="font-black text-xl text-slate-800 tracking-tight flex items-center gap-2 flex-wrap">
                         ClassView
-                        <span class="text-emerald-500 font-medium text-xs bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">v4 SSE即時版</span>
+                        <span class="text-emerald-500 font-medium text-xs bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">v5 穩定版</span>
                         <span class="text-indigo-600 font-bold text-xs bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-200">匡智張玉瓊晨輝學校</span>
                     </h1>
                     <p class="text-xs text-slate-400">專為班級即時反饋設計的電子白板</p>
@@ -266,7 +266,7 @@
 
 <script>
 // ═══════════════════════════════════════════════════════════════
-//  ClassView v4 — SSE 即時推送架構
+//  ClassView v5 — SSE 即時推送架構（since 補回 + 確認機制）
 //
 //  通訊設計（完全無輪詢）：
 //  ┌─────────────────────────────────────────────────────────┐
@@ -374,6 +374,9 @@ function initSSE(role) {
     if (sseTeacher) { sseTeacher.close(); sseTeacher = null; }
     if (sseStudent) { sseStudent.close(); sseStudent = null; }
 
+    // ★ 重建 SSE 時清除去重集合，避免舊 msgId 擋住新訊息
+    seenMsgIds.clear();
+
     // BroadcastChannel（同一瀏覽器跨分頁，0ms）
     try {
         if (bcChannel) bcChannel.close();
@@ -391,25 +394,32 @@ function initSSE(role) {
 }
 
 // 老師端 SSE：監聽學生答案
+// ★ 使用 since=<timestamp> 讓 SSE 重連後補回錯過的訊息
 function connectSSE_Teacher() {
-    const url = `https://ntfy.sh/cv_rs_${roomCode}/sse`;
+    // since 設為目前時間往前 30 秒，確保補回 SSE 重建期間的訊息
+    const since = Math.floor(Date.now() / 1000) - 30;
+    const url = `https://ntfy.sh/cv_rs_${roomCode}/sse?since=${since}`;
     sseTeacher = new EventSource(url);
 
     sseTeacher.onopen = () => {
         updateStatus('🟢 已連線（即時推送）', 'bg-emerald-500');
         document.getElementById('student-conn-status').innerText = '即時連線中';
+        // ★ 老師連線後廣播 TEACHER_READY，讓學生知道可以重送答案
+        ntfySend('TEACHER_READY', { mode: currentMode });
     };
 
     sseTeacher.onmessage = (e) => {
         try {
             const d   = JSON.parse(e.data);
+            if (d.event === 'keepalive') return;
             const msg = JSON.parse(d.message);
             if (!msg || !msg.type) return;
 
-            // 去重
-            if (msg.msgId) {
-                if (seenMsgIds.has(msg.msgId)) return;
-                seenMsgIds.add(msg.msgId);
+            // 去重（用 ntfy 訊息的唯一 id，不用 msgId）
+            const ntfyId = d.id;
+            if (ntfyId) {
+                if (seenMsgIds.has(ntfyId)) return;
+                seenMsgIds.add(ntfyId);
             }
 
             if (msg.type === 'ANS') {
@@ -428,8 +438,10 @@ function connectSSE_Teacher() {
 }
 
 // 學生端 SSE：監聽老師指令
+// ★ 使用 since=<timestamp> 讓 SSE 重連後補回錯過的訊息
 function connectSSE_Student() {
-    const url = `https://ntfy.sh/cv_rm_${roomCode}/sse`;
+    const since = Math.floor(Date.now() / 1000) - 30;
+    const url = `https://ntfy.sh/cv_rm_${roomCode}/sse?since=${since}`;
     sseStudent = new EventSource(url);
 
     sseStudent.onopen = () => {
@@ -442,19 +454,28 @@ function connectSSE_Student() {
     sseStudent.onmessage = (e) => {
         try {
             const d   = JSON.parse(e.data);
+            if (d.event === 'keepalive') return;
             const msg = JSON.parse(d.message);
             if (!msg || !msg.type) return;
 
-            // 去重
-            if (msg.msgId) {
-                if (seenMsgIds.has(msg.msgId)) return;
-                seenMsgIds.add(msg.msgId);
+            // 去重（用 ntfy 訊息的唯一 id）
+            const ntfyId = d.id;
+            if (ntfyId) {
+                if (seenMsgIds.has(ntfyId)) return;
+                seenMsgIds.add(ntfyId);
             }
 
             if (msg.type === 'STATE') {
                 applyModeChange(msg.payload.mode);
             } else if (msg.type === 'CLEAR') {
                 executeClear(false); // false = 不廣播（避免迴圈）
+            } else if (msg.type === 'TEACHER_READY') {
+                // ★ 老師重新連線了，更新題型並重送未確認的答案
+                applyModeChange(msg.payload.mode);
+                if (localStudent.isLoggedIn && localStudent._pendingAns) {
+                    // 重送上一個未確認的答案
+                    ntfySend('ANS', localStudent._pendingAns);
+                }
             }
         } catch(e2) {}
     };
@@ -474,6 +495,7 @@ function handleBCMessage(data) {
     if (type === 'ANS'   && currentRole !== 'student') writeAnswer(payload);
     if (type === 'STATE' && currentRole === 'student')  applyModeChange(payload.mode);
     if (type === 'CLEAR') executeClear(false);
+    if (type === 'TEACHER_READY' && currentRole === 'student') applyModeChange(payload.mode);
 }
 
 // ── Ntfy 發送 ─────────────────────────────────────────────────
@@ -590,6 +612,8 @@ window.submitAnswer = function(ans) {
     if (bcChannel) bcChannel.postMessage({ type: 'ANS', payload, msgId });
 
     // 3. Ntfy SSE 推送（跨裝置，<100ms）
+    // ★ 記錄最後一個答案，供 TEACHER_READY 時重送
+    localStudent._pendingAns = payload;
     ntfySend('ANS', payload);
 
     if (!ans.startsWith('data:image')) {
