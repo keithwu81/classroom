@@ -345,18 +345,23 @@
         // 1. 初始化
         window.addEventListener('load', () => {
             initRoomCode();
-            restoreLocalState();
-            setupCanvas();
             
-            initTriCoreEngine();
-
+            // 修正核心 Bug：必須先設定角色，再初始化通訊引擎
             if (isForceStudent) {
+                currentRole = 'student';
                 document.getElementById('role-switcher').classList.add('hidden');
                 switchView('student');
             } else {
+                currentRole = 'split';
                 switchView('split');
                 setTimeout(generateStudentQRCode, 500);
             }
+
+            restoreLocalState();
+            setupCanvas();
+            
+            initTriCoreEngine(); // 此時 currentRole 已正確設定
+            
             updateStudentUIPanel(currentMode);
         });
 
