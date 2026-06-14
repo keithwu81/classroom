@@ -6,6 +6,9 @@
     <title>互動電子回應板 - Classroom Response Board</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- 引入 P2P 穿牆連線套件 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
     <style>
         body { font-family: 'Inter', 'Noto Sans TC', sans-serif; }
         canvas { touch-action: none; }
@@ -28,6 +31,10 @@
             body.is-focus-mode #presentation-panel { height: 75% !important; width: 100% !important; }
             body.is-focus-mode #dashboard-panel { height: 25% !important; width: 100% !important; }
         }
+        /* 在專注模式下，將題型切換面板變為 2x2 緊湊網格 */
+        body.is-focus-mode #mode-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col overflow-hidden">
@@ -47,7 +54,7 @@
                 </div>
                 <div>
                     <h1 class="font-black text-xl text-slate-800 tracking-tight flex items-center gap-2 flex-wrap">
-                        ClassView <span class="text-emerald-500 font-medium text-xs bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">萬能防火牆穿透版</span>
+                        ClassView <span class="text-emerald-500 font-medium text-xs bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">三核穩定穿牆版</span>
                         <span class="text-indigo-600 font-bold text-xs bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-200">匡智張玉瓊晨輝學校</span>
                     </h1>
                     <p class="text-xs text-slate-400">專為班級即時反饋設計的電子白板</p>
@@ -56,7 +63,7 @@
 
             <!-- 安全連線狀態指示燈 -->
             <div class="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-full text-xs font-semibold">
-                <span id="cloud-status-dot" class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span id="cloud-status-dot" class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
                 <span id="cloud-status-text" class="text-slate-600">連線初始化中...</span>
             </div>
 
@@ -212,10 +219,12 @@
                     </div>
                 </div>
 
-                <!-- 右側：控制台與學生回應區 -->
-                <div id="dashboard-panel" class="w-full lg:w-[40%] xl:w-[35%] h-[60%] lg:h-full flex flex-col bg-slate-50 overflow-hidden transition-all duration-300">
+                <!-- 右側：控制台與學生回應區 (在 focus 模式保留題型按鈕) -->
+                <!-- ✅ 修改 1: flex-1 確保在 split 模式中隱藏左邊後，右邊可以自動放大填滿 100% -->
+                <div id="dashboard-panel" class="w-full lg:w-[40%] xl:w-[35%] flex-1 h-[60%] lg:h-full flex flex-col bg-slate-50 overflow-hidden transition-all duration-300">
                     
-                    <div id="dashboard-mode-selector" class="bg-white p-4 border-b border-slate-200 shrink-0 shadow-sm z-10 focus-hide">
+                    <!-- ✅ 修改 2: 移除了 focus-hide，讓題型選擇在專注模式下也能看到 -->
+                    <div id="dashboard-mode-selector" class="bg-white p-4 border-b border-slate-200 shrink-0 shadow-sm z-10">
                         <div class="flex justify-between items-center mb-3">
                             <span class="text-sm font-bold text-slate-800">📢 發布題目類型：</span>
                             <div class="flex gap-2">
@@ -223,7 +232,7 @@
                             </div>
                         </div>
                         
-                        <div class="grid grid-cols-4 gap-2">
+                        <div id="mode-grid" class="grid grid-cols-4 gap-2">
                             <button id="ctrl-mode-yes_no" onclick="setGlobalMode('yes_no')" class="mode-select-btn flex flex-col items-center justify-center py-2 px-1 rounded-lg border border-slate-200 hover:border-emerald-400 bg-slate-50 transition-all text-center">
                                 <span class="text-lg">✓/✗</span><span class="text-[10px] font-bold mt-1">剔與交叉</span>
                             </button>
@@ -304,7 +313,7 @@
         </div>
     </div>
 
-    <!-- 🚀 終極防火牆穿透與高相容同步系統 -->
+    <!-- 🚀 終極三核穩定連線系統 -->
     <script>
         let roomCode = '';
         let currentMode = 'yes_no';
@@ -322,10 +331,16 @@
         let drawColor = '#000000', drawWidth = 5, drawTool = 'pen'; 
         let drawThrottleTimeout = null;
 
-        // 雲端連線變數 (標準高相容 Polling 同步時間戳 watermark)
-        let lastRoomPollTime = Math.floor(Date.now() / 1000) - 10;
-        let lastResPollTime = Math.floor(Date.now() / 1000) - 10;
-        let syncIntervalTimer = null;
+        // ==========================================
+        // 🚀 三核連線引擎：BroadcastChannel(本地) + PeerJS(P2P) + Ntfy(備援)
+        // ==========================================
+        let bc = null;
+        let peer = null;
+        let hostConn = null;
+        let peerConnections = [];
+        let lastRoomPollTime = Math.floor(Date.now() / 1000) - 5;
+        let lastResPollTime = Math.floor(Date.now() / 1000) - 5;
+        let fallbackTimer = null;
 
         // 1. 初始化
         window.addEventListener('load', () => {
@@ -333,8 +348,7 @@
             restoreLocalState();
             setupCanvas();
             
-            // 啟動超強穿牆 HTTPS 同步引擎
-            startHTTPSyncEngine();
+            initTriCoreEngine();
 
             if (isForceStudent) {
                 document.getElementById('role-switcher').classList.add('hidden');
@@ -346,7 +360,6 @@
             updateStudentUIPanel(currentMode);
         });
 
-        // 2. 房號生成與安全性處理 (修復 Canvas 中的 SecurityError)
         function initRoomCode() {
             let urlRoom = urlParams.get('room');
             if (urlRoom) {
@@ -355,14 +368,11 @@
                 roomCode = sessionStorage.getItem('cyk_room') || 'CYK' + Math.floor(1000 + Math.random() * 9000);
                 sessionStorage.setItem('cyk_room', roomCode);
                 try {
-                    // 只在允許變更網址的環境下更新歷史紀錄，徹底避免 SecurityError 報錯崩潰
                     if (!window.location.protocol.startsWith('blob') && !window.location.protocol.startsWith('data')) {
                         const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?room=' + roomCode + (isForceStudent ? '&role=student' : '');
                         window.history.replaceState({ path: newUrl }, '', newUrl);
                     }
-                } catch (e) {
-                    console.warn("Canvas Iframe 限制網址列變更，已自動在安全沙盒模式下運行。");
-                }
+                } catch (e) {}
             }
             document.getElementById('teacher-room-display').innerText = `房號: ${roomCode}`;
             document.getElementById('student-login-room-display').innerText = `房號：${roomCode}`;
@@ -382,26 +392,58 @@
             } catch(e) {}
         }
 
-        // ==========================================
-        // 🚀 終極穿牆：HTTPS 雙軌標準輪詢 (100% 免疫學校防火牆)
-        // ==========================================
-        function startHTTPSyncEngine() {
-            // 立刻更新在線狀態，因為 Polling 模式是不需要長連線交握的，點開即可暢通使用
-            updateStatus(`🟢 連線成功 (房號 ${roomCode})`, 'bg-emerald-500');
+        // 啟動三核引擎
+        function initTriCoreEngine() {
+            // 核心 1：BroadcastChannel (解決同一台電腦、同一個瀏覽器開雙視窗的 0 毫秒極速同步)
+            try {
+                bc = new BroadcastChannel(`cv_sync_${roomCode}`);
+                bc.onmessage = (e) => {
+                    const { type, payload } = e.data;
+                    if (type === 'STATE' && currentRole === 'student') handleRoomStateUpdate(payload);
+                    if (type === 'ANS' && currentRole !== 'student') handleIncomingAnswer(payload);
+                    if (type === 'CLEAR') executeClear();
+                };
+            } catch(e) { console.warn("BroadcastChannel not supported."); }
 
-            const topicRoom = `cyk_rm_${roomCode.toLowerCase()}`;
-            const topicRes = `cyk_rs_${roomCode.toLowerCase()}`;
+            // 核心 2：PeerJS (解決跨裝置 iPad 點對點連線，免除伺服器封鎖)
+            if (typeof Peer !== 'undefined') {
+                const peerId = currentRole !== 'student' ? `cv_host_${roomCode}` : `cv_stu_${Math.random().toString(36).substr(2,6)}`;
+                peer = new Peer(peerId, { config: {'iceServers': [{ urls: 'stun:stun.l.google.com:19302' }]} });
+                
+                peer.on('open', () => {
+                    if (currentRole === 'student') {
+                        hostConn = peer.connect(`cv_host_${roomCode}`);
+                        hostConn.on('open', () => {
+                            updateStatus('🟢 連線成功 (極速P2P)', 'bg-emerald-500');
+                            hostConn.send({ type: 'REQ_STATE' });
+                        });
+                        hostConn.on('data', (data) => {
+                            if (data.type === 'STATE') handleRoomStateUpdate(data.payload);
+                            if (data.type === 'CLEAR') executeClear();
+                        });
+                        hostConn.on('error', startFallbackPolling);
+                    } else {
+                        updateStatus('🟢 準備就緒 (主機模式)', 'bg-emerald-500');
+                    }
+                });
 
-            // A. 初次啟動時，立即主動請求目前老師的題型
-            if (currentRole === 'student') {
-                sendHTTPRequest(topicRes, { action: 'req_state' });
+                if (currentRole !== 'student') {
+                    peer.on('connection', (conn) => {
+                        peerConnections.push(conn);
+                        conn.on('data', (data) => {
+                            if (data.type === 'REQ_STATE') conn.send({ type: 'STATE', payload: { mode: currentMode } });
+                            if (data.type === 'ANS') handleIncomingAnswer(data.payload);
+                        });
+                        conn.on('close', () => { peerConnections = peerConnections.filter(c => c !== conn); });
+                    });
+                }
+                peer.on('error', startFallbackPolling);
+            } else {
+                startFallbackPolling();
             }
 
-            // B. 啟動超強穿牆標準 HTTPS 輪詢 (每 1.5 秒更新一次，極速且穩定)
-            if (syncIntervalTimer) clearInterval(syncIntervalTimer);
-            syncIntervalTimer = setInterval(() => {
-                pollLatestCloudData(topicRoom, topicRes);
-            }, 1500);
+            // 啟動基礎防呆
+            if (currentRole === 'student') sendFallback('REQ_STATE', {});
         }
 
         function updateStatus(text, colorClass) {
@@ -409,177 +451,118 @@
             document.getElementById('cloud-status-dot').className = `w-2.5 h-2.5 rounded-full animate-pulse ${colorClass}`;
         }
 
-        // 智能 HTTP POST 發送器 (防漏重試)
-        async function sendHTTPRequest(topic, payload, retries = 3) {
-            const url = `https://ntfy.sh/${topic}`;
-            for (let i = 0; i < retries; i++) {
+        // 核心 3：HTTPS Polling 終極備援 (若 P2P 被學校徹底封鎖，將啟動每 2.5 秒 HTTPS 輪詢)
+        function startFallbackPolling() {
+            if (fallbackTimer) return; // 避免重複啟動
+            updateStatus('🟢 連線成功 (高相容備援)', 'bg-emerald-500');
+            fallbackTimer = setInterval(async () => {
                 try {
-                    const response = await fetch(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-                    if (response.ok) return true;
-                } catch (e) {
-                    console.warn(`第 ${i+1} 次上傳重試...`);
-                }
-                await new Promise(r => setTimeout(r, 400 * (i + 1))); // 退避重試
-            }
-            return false;
+                    if (currentRole === 'student') {
+                        const res = await fetch(`https://ntfy.sh/cv_rm_${roomCode}/json?poll=1&since=${lastRoomPollTime}`);
+                        const text = await res.text();
+                        text.trim().split('\n').forEach(line => {
+                            if(!line) return;
+                            const d = JSON.parse(line);
+                            if (d.time >= lastRoomPollTime) lastRoomPollTime = d.time + 1;
+                            const msg = JSON.parse(d.message);
+                            if (msg.type === 'STATE') handleRoomStateUpdate(msg.payload);
+                            if (msg.type === 'CLEAR') executeClear();
+                        });
+                    } else {
+                        const res = await fetch(`https://ntfy.sh/cv_rs_${roomCode}/json?poll=1&since=${lastResPollTime}`);
+                        const text = await res.text();
+                        text.trim().split('\n').forEach(line => {
+                            if(!line) return;
+                            const d = JSON.parse(line);
+                            if (d.time >= lastResPollTime) lastResPollTime = d.time + 1;
+                            const msg = JSON.parse(d.message);
+                            if (msg.type === 'ANS') handleIncomingAnswer(msg.payload);
+                            if (msg.type === 'REQ_STATE') sendFallback('STATE', { mode: currentMode });
+                        });
+                    }
+                } catch(e) {}
+            }, 2500);
         }
 
-        // 防火牆穿透：極速 NDJSON 輪詢拉取器 (採用精準的時間標記 Watermark，保證不漏單)
-        async function pollLatestCloudData(topicRoom, topicRes) {
-            try {
-                // 1. 學生端：拉取最新題型與狀態
-                if (currentRole === 'student') {
-                    const res = await fetch(`https://ntfy.sh/${topicRoom}/json?poll=1&since=${lastRoomPollTime}`);
-                    if (res.ok) {
-                        const text = await res.text();
-                        const lines = text.trim().split('\n');
-                        lines.forEach(line => {
-                            if (!line) return;
-                            try {
-                                const data = JSON.parse(line);
-                                // 滑動我們的時間標記，防止重複拉取
-                                if (data.time && data.time >= lastRoomPollTime) {
-                                    lastRoomPollTime = data.time + 1;
-                                }
-                                if (data.event === 'message' && data.message) {
-                                    handleRoomStateUpdate(JSON.parse(data.message));
-                                }
-                            } catch(e) {}
-                        });
-                    }
-                }
-                
-                // 2. 老師端：拉取全班學生的答案與手寫板
-                if (currentRole !== 'student') {
-                    const res = await fetch(`https://ntfy.sh/${topicRes}/json?poll=1&since=${lastResPollTime}`);
-                    if (res.ok) {
-                        const text = await res.text();
-                        const lines = text.trim().split('\n');
-                        lines.forEach(line => {
-                            if (!line) return;
-                            try {
-                                const data = JSON.parse(line);
-                                if (data.time && data.time >= lastResPollTime) {
-                                    lastResPollTime = data.time + 1;
-                                }
-                                if (data.event === 'message' && data.message) {
-                                    handleIncomingAnswer(JSON.parse(data.message));
-                                }
-                            } catch(e) {}
-                        });
-                    }
-                }
-            } catch (err) {
-                console.warn("備援輪詢閃斷，等待下一輪同步...");
-            }
+        function sendFallback(type, payload) {
+            const topic = (type === 'STATE' || type === 'CLEAR') ? `cv_rm_${roomCode}` : `cv_rs_${roomCode}`;
+            fetch(`https://ntfy.sh/${topic}`, {
+                method: 'POST', body: JSON.stringify({ type, payload, ts: Date.now() })
+            }).catch(()=>{});
         }
 
         // ==========================================
         // 核心業務邏輯處理
         // ==========================================
         function handleRoomStateUpdate(payload) {
-            if (payload.action === 'state') {
-                if (currentMode !== payload.mode) {
-                    currentMode = payload.mode;
-                    updateStudentUIPanel(currentMode);
-                    updateTeacherModeButtons(currentMode);
-                }
-            } else if (payload.action === 'clear') {
-                localResponses = {};
-                localStorage.removeItem(`cyk_res_${roomCode}`);
-                clearCanvasLocal();
-                if (currentRole !== 'student') renderTeacherDashboard({}, currentMode);
-                document.getElementById('display-last-submit').innerHTML = `<span class="text-slate-600">已清空</span>`;
+            if (currentMode !== payload.mode) {
+                currentMode = payload.mode;
+                updateStudentUIPanel(currentMode);
+                updateTeacherModeButtons(currentMode);
             }
         }
 
         function handleIncomingAnswer(payload) {
-            if (payload.action === 'req_state') {
-                publishRoomState(); // 老師收到學生請求，重發題目
-            } else if (payload.action === 'ans') {
-                // 只保留最新時間戳的答案
-                const existing = localResponses[payload.id];
-                if (existing && existing.ts > payload.ts) return;
-
-                localResponses[payload.id] = { name: payload.name, answer: payload.ans, ts: payload.ts };
-                localStorage.setItem(`cyk_res_${roomCode}`, JSON.stringify(localResponses));
-                renderTeacherDashboard(localResponses, currentMode);
-            }
+            const existing = localResponses[payload.id];
+            if (existing && existing.ts >= payload.ts) return; // 防漏單：確保新資料才寫入
+            localResponses[payload.id] = { name: payload.name, answer: payload.ans, ts: payload.ts };
+            localStorage.setItem(`cyk_res_${roomCode}`, JSON.stringify(localResponses));
+            if (currentRole !== 'student') renderTeacherDashboard(localResponses, currentMode);
         }
 
-        // 老師發送指令
+        function executeClear() {
+            localResponses = {};
+            localStorage.removeItem(`cyk_res_${roomCode}`);
+            clearCanvasLocal();
+            if (currentRole !== 'student') renderTeacherDashboard({}, currentMode);
+            
+            // 清除學生端的按鈕發亮狀態
+            document.querySelectorAll('.student-ans-btn').forEach(btn => {
+                btn.classList.remove('scale-125', 'ring-4', 'ring-indigo-400', 'shadow-2xl', 'z-10', 'opacity-40', 'scale-95');
+            });
+            document.getElementById('display-last-submit').innerHTML = `<span class="text-slate-600">等待作答...</span>`;
+        }
+
+        // 老師發送指令 (切換題型)
         window.setGlobalMode = function(mode) {
             currentMode = mode;
             updateStudentUIPanel(mode);
             updateTeacherModeButtons(mode);
-            publishRoomState();
+            
+            const payload = { mode: currentMode };
+            if(bc) bc.postMessage({ type: 'STATE', payload });
+            peerConnections.forEach(c => { if(c.open) c.send({ type: 'STATE', payload }); });
+            sendFallback('STATE', payload);
 
-            // 換題時清空學生答案
-            if (localStudent.isLoggedIn) {
-                clearCanvasLocal(); delete localResponses[localStudent.id];
-                localStorage.setItem(`cyk_res_${roomCode}`, JSON.stringify(localResponses));
-                document.getElementById('display-last-submit').innerHTML = `<span class="text-slate-600">等待作答</span>`;
-            }
-            renderTeacherDashboard(localResponses, mode);
-            adjustStudentGridForMode(mode);
-        }
-
-        function publishRoomState() {
-            const topicRoom = `cyk_rm_${roomCode.toLowerCase()}`;
-            sendHTTPRequest(topicRoom, { action: 'state', mode: currentMode });
+            executeClear(); // 換題自動清空
         }
 
         window.clearAllResponses = function() {
-            localResponses = {}; 
-            localStorage.removeItem(`cyk_res_${roomCode}`);
-            clearCanvasLocal();
-            
-            const topicRoom = `cyk_rm_${roomCode.toLowerCase()}`;
-            sendHTTPRequest(topicRoom, { action: 'clear' });
-            
+            executeClear();
+            if(bc) bc.postMessage({ type: 'CLEAR' });
+            peerConnections.forEach(c => { if(c.open) c.send({ type: 'CLEAR' }); });
+            sendFallback('CLEAR', {});
             showToast('已清空所有答案！', 'success');
-            renderTeacherDashboard({}, currentMode);
         }
 
-        // 學生提交答案 (極速本地同步 + 防漏重試雲端同步)
+        // 學生提交答案
         window.submitAnswer = function(ans) {
             if (!localStudent.isLoggedIn) return showToast('請先登入！', 'warning');
             if (!ans.startsWith('data:image')) highlightSelectedAnswer(ans);
 
-            const ts = Date.now();
-            const payload = { action: 'ans', id: localStudent.id, name: localStudent.name, ans: ans, ts: ts };
+            const payload = { id: localStudent.id, name: localStudent.name, ans: ans, ts: Date.now() };
             
-            // 寫入本地記憶體與 LocalStorage (同台設備測試時實現 0ms 極速連動)
-            localResponses[localStudent.id] = { name: localStudent.name, answer: ans, ts: ts };
-            localStorage.setItem(`cyk_res_${roomCode}`, JSON.stringify(localResponses));
-            if (currentRole !== 'student') renderTeacherDashboard(localResponses, currentMode);
-
-            // 雲端安全傳送 (萬能穿牆，防漏重試)
-            const topicRes = `cyk_rs_${roomCode.toLowerCase()}`;
-            sendHTTPRequest(topicRes, payload);
+            // 寫入本地與三核廣播
+            handleIncomingAnswer(payload); // Local
+            if(bc) bc.postMessage({ type: 'ANS', payload }); // Browser Sync
+            if (hostConn && hostConn.open) hostConn.send({ type: 'ANS', payload }); // PeerJS
+            sendFallback('ANS', payload); // Ntfy Fallback
 
             if (!ans.startsWith('data:image')) {
                 showToast('已傳送！', 'success');
                 document.getElementById('display-last-submit').innerHTML = `<span class="text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-bold">已傳送答案</span>`;
             }
         }
-
-        // 同設備本地跨視窗同步 (若沒有網路時的備案)
-        window.addEventListener('storage', (e) => {
-            if (e.key === `cyk_res_${roomCode}`) {
-                try {
-                    const newRes = JSON.parse(e.newValue);
-                    if (newRes) {
-                        localResponses = { ...localResponses, ...newRes };
-                        if (currentRole !== 'student') renderTeacherDashboard(localResponses, currentMode);
-                    }
-                } catch(err) {}
-            }
-        });
 
         // ==========================================
         // 介面與繪圖操作函數
@@ -600,10 +583,9 @@
             showStudentWorkspace();
             showToast(`歡迎 ${name}！`, 'success');
             
-            // 登入後立即發起一次握手請求，抓取目前的題目題型
-            const topicRes = `cyk_rs_${roomCode.toLowerCase()}`;
-            sendHTTPRequest(topicRes, { action: 'req_state' });
-
+            // 登入後要題目
+            if (hostConn && hostConn.open) hostConn.send({ type: 'REQ_STATE' });
+            sendFallback('REQ_STATE', {});
             setTimeout(() => window.dispatchEvent(new Event('resize')), 200);
         }
 
@@ -632,8 +614,6 @@
             else if (mode === 'abcd') document.getElementById('mode-student-abcd').classList.remove('hidden');
             else if (mode === 'drawing') { document.getElementById('mode-student-draw').classList.remove('hidden'); setTimeout(() => window.dispatchEvent(new Event('resize')), 100); }
             else document.getElementById('mode-waiting').classList.remove('hidden');
-            
-            document.querySelectorAll('.student-ans-btn').forEach(btn => btn.classList.remove('scale-125', 'ring-4', 'ring-indigo-400', 'shadow-2xl', 'z-10', 'opacity-40', 'scale-95'));
         }
 
         function updateTeacherModeButtons(mode) {
@@ -644,7 +624,6 @@
             if (activeBtn) activeBtn.className = "mode-select-btn flex flex-col items-center justify-center py-2 px-1 rounded-lg border-2 border-emerald-500 bg-emerald-50 shadow-md text-emerald-800 scale-105 transition-all text-center font-bold";
         }
 
-        // 老師端網格渲染 (智慧排版，自適應專注模式)
         function renderTeacherDashboard(responses, activeMode) {
             const grid = document.getElementById('student-grid');
             grid.innerHTML = ''; let fullList = [];
@@ -765,7 +744,6 @@
             canvas.addEventListener('touchend', (e) => { e.preventDefault(); end(); });
         }
 
-        // 畫布超輕量高壓縮 (僅約 1~2KB)，保證雲端絕不拒收漏單！
         function getCompressedDrawing() {
             if (!canvas) return '';
             const maxWidth = 150; 
@@ -790,19 +768,24 @@
         // 9. 其他 UI 控制與功能
         window.switchView = function(view) {
             currentRole = view;
-            const studentCol = document.getElementById('student-container'), teacherCol = document.getElementById('teacher-container'), pPanel = document.getElementById('presentation-panel');
+            const studentCol = document.getElementById('student-container'), teacherCol = document.getElementById('teacher-container'), pPanel = document.getElementById('presentation-panel'), dPanel = document.getElementById('dashboard-panel');
             ['btn-split', 'btn-teacher', 'btn-student'].forEach(id => document.getElementById(id).className = "whitespace-nowrap flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all text-slate-600 hover:text-slate-900");
             
+            // ✅ 修改 1: 完美處理雙螢幕放大的版面邏輯
             if (view === 'split') {
-                studentCol.classList.remove('hidden'); teacherCol.classList.remove('hidden'); pPanel.classList.add('hidden'); document.getElementById('btn-split').classList.add('bg-white', 'text-emerald-600', 'shadow-sm', 'font-bold');
+                studentCol.classList.remove('hidden'); teacherCol.classList.remove('hidden'); 
+                pPanel.classList.add('hidden'); // 隱藏簡報區
+                dPanel.classList.remove('lg:w-[40%]', 'xl:w-[35%]'); // 讓右邊控制台滿版放大
+                document.getElementById('btn-split').classList.add('bg-white', 'text-emerald-600', 'shadow-sm', 'font-bold');
             } else if (view === 'teacher') {
-                studentCol.classList.add('hidden'); teacherCol.classList.remove('hidden'); pPanel.classList.remove('hidden'); document.getElementById('btn-teacher').classList.add('bg-white', 'text-emerald-600', 'shadow-sm', 'font-bold');
+                studentCol.classList.add('hidden'); teacherCol.classList.remove('hidden'); 
+                pPanel.classList.remove('hidden'); // 恢復簡報區
+                dPanel.classList.add('lg:w-[40%]', 'xl:w-[35%]'); // 恢復控制台寬度
+                document.getElementById('btn-teacher').classList.add('bg-white', 'text-emerald-600', 'shadow-sm', 'font-bold');
             } else if (view === 'student') {
-                studentCol.classList.remove('hidden'); teacherCol.classList.add('hidden'); document.getElementById('btn-student').classList.add('bg-white', 'text-emerald-600', 'shadow-sm', 'font-bold');
+                studentCol.classList.remove('hidden'); teacherCol.classList.add('hidden'); 
+                document.getElementById('btn-student').classList.add('bg-white', 'text-emerald-600', 'shadow-sm', 'font-bold');
             }
-
-            // 重啟對應的雲端通道訂閱
-            startHTTPSyncEngine();
 
             setTimeout(() => { window.dispatchEvent(new Event('resize')); adjustStudentGridForMode(currentMode); }, 100);
         }
@@ -839,7 +822,6 @@
         window.generateStudentQRCode = function() {
             try {
                 const url = window.location.origin + window.location.pathname + `?room=${roomCode}&role=student`;
-                // 採用最穩定的 QR 圖伺服器 API (標準 img)，100% 成功不會報錯
                 document.getElementById('qrcode-img').src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}`;
                 document.getElementById('student-url-display').value = url;
             } catch(e) {}
