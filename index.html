@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>互動電子回應板 - Classroom Response Board</title>
+    <title>互動電子回應板 - ClassView</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+TC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
     <style>
@@ -13,8 +13,6 @@
         ::-webkit-scrollbar-track { background: #f1f5f9; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         .student-ans-btn { transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); transform-origin: center; }
-        
-        /* 專注模式樣式 */
         body.is-focus-mode .focus-hide { display: none !important; }
         @media (min-width: 1024px) {
             body.is-focus-mode #presentation-panel { width: 75% !important; }
@@ -28,20 +26,16 @@
             body.is-focus-mode #presentation-panel { height: 75% !important; width: 100% !important; }
             body.is-focus-mode #dashboard-panel { height: 25% !important; width: 100% !important; }
         }
-        body.is-focus-mode #mode-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-        }
+        body.is-focus-mode #mode-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col overflow-hidden">
 
-    <!-- 專注模式懸浮控制列 -->
     <div id="focus-mode-controls" class="hidden fixed top-4 right-4 z-[9999] flex items-center gap-2">
         <button onclick="openQrModal()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 rounded-full font-bold text-sm shadow-xl flex items-center gap-2 transition-all">📱 邀請碼</button>
         <button onclick="toggleFocusMode()" class="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2.5 rounded-full font-bold text-sm shadow-xl flex items-center gap-2 transition-all">❌ 退出專注</button>
     </div>
 
-    <!-- 頂部導航欄 -->
     <header id="main-header" class="bg-white border-b border-slate-200 shadow-sm z-50 shrink-0 focus-hide">
         <div class="max-w-[1600px] mx-auto px-4 py-3 flex flex-col sm:flex-row justify-between items-center gap-3">
             <div class="flex items-center gap-3">
@@ -50,38 +44,37 @@
                 </div>
                 <div>
                     <h1 class="font-black text-xl text-slate-800 tracking-tight flex items-center gap-2 flex-wrap">
-                        ClassView <span class="text-emerald-500 font-medium text-xs bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">v3 重試穩定版</span>
+                        ClassView
+                        <span class="text-emerald-500 font-medium text-xs bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">v4 SSE即時版</span>
                         <span class="text-indigo-600 font-bold text-xs bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-200">匡智張玉瓊晨輝學校</span>
                     </h1>
                     <p class="text-xs text-slate-400">專為班級即時反饋設計的電子白板</p>
                 </div>
             </div>
-
             <div class="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-full text-xs font-semibold">
                 <span id="cloud-status-dot" class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
                 <span id="cloud-status-text" class="text-slate-600">連線初始化中...</span>
             </div>
-
             <div id="role-switcher" class="bg-slate-100 p-1 rounded-xl flex gap-1 w-full sm:w-auto overflow-x-auto">
-                <button id="btn-split" onclick="switchView('split')" class="whitespace-nowrap flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-bold transition-all bg-white text-emerald-600 shadow-sm">雙螢幕測試</button>
+                <button id="btn-split"   onclick="switchView('split')"   class="whitespace-nowrap flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-bold   transition-all bg-white text-emerald-600 shadow-sm">雙螢幕測試</button>
                 <button id="btn-teacher" onclick="switchView('teacher')" class="whitespace-nowrap flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all text-slate-600 hover:text-slate-900">老師主控台</button>
                 <button id="btn-student" onclick="switchView('student')" class="whitespace-nowrap flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all text-slate-600 hover:text-slate-900">學生回答端</button>
             </div>
         </div>
     </header>
 
-    <div id="toast-container" class="fixed top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none"></div>
+    <div id="toast-container" class="fixed top-20 right-4 z-[9999] flex flex-col gap-2 pointer-events-none"></div>
 
     <main class="flex-1 flex overflow-hidden">
-        
-        <!-- 📱 學生端容器 -->
+
+        <!-- 📱 學生端 -->
         <section id="student-container" class="w-full md:w-1/2 flex-shrink-0 flex flex-col bg-slate-100 border-r border-slate-200 overflow-y-auto">
             <div class="bg-indigo-600 text-white px-6 py-4 flex justify-between items-center shadow-md">
                 <div class="flex items-center gap-2">
                     <span class="text-2xl">📱</span>
                     <div>
                         <h2 class="font-bold text-lg leading-none">學生 iPad 回答端</h2>
-                        <span id="student-active-status" class="text-xs text-indigo-200">實時雲端連線中</span>
+                        <span id="student-conn-status" class="text-xs text-indigo-200">連線中...</span>
                     </div>
                 </div>
                 <div id="student-badge" class="bg-indigo-700 px-3 py-1 rounded-full text-xs font-semibold hidden">
@@ -89,7 +82,6 @@
                 </div>
             </div>
 
-            <!-- 登入區 -->
             <div id="student-login-box" class="flex-1 flex items-center justify-center p-6">
                 <div class="bg-white rounded-2xl p-8 shadow-xl border border-slate-100 max-w-sm w-full">
                     <div class="text-center mb-6">
@@ -105,13 +97,12 @@
                 </div>
             </div>
 
-            <!-- 答題工作區 -->
             <div id="student-workspace" class="flex-1 p-6 hidden flex flex-col justify-between">
                 <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm mb-4 flex justify-between items-center">
                     <div class="flex items-center gap-2">
                         <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
                         <span class="text-sm font-semibold text-slate-600">目前題型：</span>
-                        <span id="student-current-mode-txt" class="text-sm font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">載入中...</span>
+                        <span id="student-current-mode-txt" class="text-sm font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">等待中...</span>
                     </div>
                     <button onclick="logoutStudent()" class="text-xs text-slate-400 hover:text-red-500">退出</button>
                 </div>
@@ -138,14 +129,14 @@
                     <div id="mode-student-draw" class="hidden w-full flex flex-col h-full gap-3 p-2">
                         <div class="flex flex-wrap items-center justify-between gap-2 p-2 bg-slate-50 border border-slate-200 rounded-xl">
                             <div class="flex items-center gap-1.5">
-                                <button onclick="setDrawColor('#000000', this)" class="color-btn w-7 h-7 rounded-full bg-black ring-2 ring-offset-2 ring-indigo-500"></button>
-                                <button onclick="setDrawColor('#ef4444', this)" class="color-btn w-7 h-7 rounded-full bg-red-500 ring-0 ring-offset-2 ring-red-500"></button>
-                                <button onclick="setDrawColor('#3b82f6', this)" class="color-btn w-7 h-7 rounded-full bg-blue-500 ring-0 ring-offset-2 ring-blue-500"></button>
-                                <button onclick="setDrawColor('#10b981', this)" class="color-btn w-7 h-7 rounded-full bg-emerald-500 ring-0 ring-offset-2 ring-emerald-500"></button>
-                                <button onclick="setDrawColor('#eab308', this)" class="color-btn w-7 h-7 rounded-full bg-yellow-500 ring-0 ring-offset-2 ring-yellow-500"></button>
+                                <button onclick="setDrawColor('#000000',this)" class="color-btn w-7 h-7 rounded-full bg-black ring-2 ring-offset-2 ring-indigo-500"></button>
+                                <button onclick="setDrawColor('#ef4444',this)" class="color-btn w-7 h-7 rounded-full bg-red-500"></button>
+                                <button onclick="setDrawColor('#3b82f6',this)" class="color-btn w-7 h-7 rounded-full bg-blue-500"></button>
+                                <button onclick="setDrawColor('#10b981',this)" class="color-btn w-7 h-7 rounded-full bg-emerald-500"></button>
+                                <button onclick="setDrawColor('#eab308',this)" class="color-btn w-7 h-7 rounded-full bg-yellow-500"></button>
                             </div>
                             <div class="flex items-center gap-1 bg-slate-200 p-0.5 rounded-lg">
-                                <button onclick="setDrawTool('pen')" id="tool-pen" class="px-2.5 py-1 text-xs font-bold rounded bg-white text-slate-800 shadow-sm">✏️ 畫筆</button>
+                                <button onclick="setDrawTool('pen')"    id="tool-pen"    class="px-2.5 py-1 text-xs font-bold rounded bg-white text-slate-800 shadow-sm">✏️ 畫筆</button>
                                 <button onclick="setDrawTool('eraser')" id="tool-eraser" class="px-2.5 py-1 text-xs font-bold rounded text-slate-600">🧽 橡皮擦</button>
                             </div>
                             <button onclick="clearCanvas()" class="px-2.5 py-1 text-xs font-bold bg-slate-200 hover:bg-slate-300 rounded text-slate-700">🗑️ 清空</button>
@@ -156,75 +147,65 @@
                     </div>
                 </div>
 
-                <div class="mt-4 p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs text-slate-500">
-                    <div class="flex items-center gap-1.5">
-                        <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
-                        <span>系統狀態：</span>
-                        <strong id="display-last-submit" class="text-indigo-600">已就緒</strong>
-                    </div>
+                <div class="mt-4 p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center text-xs text-slate-500 gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
+                    <span>系統狀態：</span>
+                    <strong id="display-last-submit" class="text-indigo-600">已就緒</strong>
                 </div>
             </div>
         </section>
 
-        <!-- 👨‍🏫 老師主控台容器 -->
+        <!-- 👨‍🏫 老師主控台 -->
         <section id="teacher-container" class="flex-1 flex flex-col bg-slate-50 overflow-hidden w-full relative">
             <div id="teacher-top-banner" class="bg-emerald-600 text-white px-4 md:px-6 py-3 flex flex-wrap justify-between items-center gap-3 shadow-md shrink-0 focus-hide">
                 <div class="flex items-center gap-2">
                     <span class="text-2xl">👨‍🏫</span>
-                    <div>
-                        <h2 class="font-bold text-lg leading-none">老師教學控制台 <span id="teacher-room-display" class="bg-emerald-700 px-2 py-0.5 rounded text-sm text-yellow-300 ml-1">房號: 載入中...</span></h2>
-                    </div>
+                    <h2 class="font-bold text-lg leading-none">老師教學控制台
+                        <span id="teacher-room-display" class="bg-emerald-700 px-2 py-0.5 rounded text-sm text-yellow-300 ml-1">房號: 載入中...</span>
+                    </h2>
                 </div>
                 <div class="flex items-center gap-3 flex-wrap">
                     <button onclick="toggleFocusMode()" class="bg-amber-500 hover:bg-amber-400 text-white px-3 py-1.5 rounded-xl font-bold text-xs shadow-sm">👁️ 專注模式</button>
-                    <button onclick="openQrModal()" class="bg-indigo-500 hover:bg-indigo-400 text-white px-3 py-1.5 rounded-xl font-bold text-xs shadow-sm">📱 學生邀請碼</button>
+                    <button onclick="openQrModal()"     class="bg-indigo-500 hover:bg-indigo-400 text-white px-3 py-1.5 rounded-xl font-bold text-xs shadow-sm">📱 學生邀請碼</button>
                 </div>
             </div>
 
             <div class="flex-1 flex flex-col lg:flex-row overflow-hidden w-full">
-                <!-- 左側：簡報/題目展示區 -->
-                <div id="presentation-panel" class="w-full lg:w-[60%] xl:w-[65%] h-[40%] lg:h-full flex flex-col border-r border-slate-200 bg-slate-100 z-10 transition-all duration-300">
-                    <div id="presentation-toolbar" class="bg-white border-b border-slate-200 p-2 md:p-3 flex items-center gap-2 shrink-0 shadow-sm z-20 focus-hide">
+                <!-- 簡報區 -->
+                <div id="presentation-panel" class="hidden w-full lg:w-[60%] xl:w-[65%] h-[40%] lg:h-full flex flex-col border-r border-slate-200 bg-slate-100 z-10 transition-all duration-300">
+                    <div class="bg-white border-b border-slate-200 p-2 md:p-3 flex items-center gap-2 shrink-0 shadow-sm focus-hide">
                         <span class="text-sm font-bold text-slate-700 whitespace-nowrap hidden sm:inline">📺 簡報展示</span>
                         <input type="text" id="presentation-url" placeholder="貼上 Google 簡報或 PPTX 網址..." class="flex-1 px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-indigo-400">
-                        <button onclick="loadPresentation()" class="bg-slate-700 hover:bg-slate-800 text-white text-xs font-bold px-4 py-1.5 rounded-lg shadow-sm">嵌入</button>
+                        <button onclick="loadPresentation()"  class="bg-slate-700 hover:bg-slate-800 text-white text-xs font-bold px-4 py-1.5 rounded-lg shadow-sm">嵌入</button>
                         <button onclick="clearPresentation()" class="text-slate-400 hover:text-red-500 p-1.5 rounded-lg"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
                     </div>
-                    <div id="presentation-frame-container" class="flex-1 relative bg-slate-200 flex items-center justify-center overflow-hidden">
+                    <div class="flex-1 relative bg-slate-200 flex items-center justify-center overflow-hidden">
                         <div id="presentation-placeholder" class="text-center p-8 text-slate-400">
                             <div class="text-6xl mb-4 opacity-50">🖥️</div>
                             <h3 class="text-lg font-bold text-slate-500 mb-2">課堂簡報區</h3>
-                            <p class="text-xs max-w-sm mx-auto">貼上網址載入題目。點擊右上角「👁️ 專注模式」可最大化顯示！</p>
+                            <p class="text-xs max-w-sm mx-auto">貼上網址載入題目。點擊「👁️ 專注模式」可最大化！</p>
                         </div>
                         <iframe id="presentation-iframe" class="hidden absolute inset-0 w-full h-full bg-white" frameborder="0" allowfullscreen></iframe>
                     </div>
                 </div>
 
-                <!-- 右側：控制台與學生回應區 -->
+                <!-- 控制台 -->
                 <div id="dashboard-panel" class="w-full lg:w-[40%] xl:w-[35%] flex-1 h-[60%] lg:h-full flex flex-col bg-slate-50 overflow-hidden transition-all duration-300">
-                    <div id="dashboard-mode-selector" class="bg-white p-4 border-b border-slate-200 shrink-0 shadow-sm z-10">
+                    <div class="bg-white p-4 border-b border-slate-200 shrink-0 shadow-sm z-10">
                         <div class="flex justify-between items-center mb-3">
                             <span class="text-sm font-bold text-slate-800">📢 發布題目類型：</span>
                             <button onclick="clearAllResponses()" class="text-[10px] bg-rose-50 text-rose-600 px-2 py-1 rounded border border-rose-200 font-bold hover:bg-rose-100">🗑️ 清空答案</button>
                         </div>
                         <div id="mode-grid" class="grid grid-cols-4 gap-2">
-                            <button id="ctrl-mode-yes_no" onclick="setGlobalMode('yes_no')" class="mode-select-btn flex flex-col items-center justify-center py-2 px-1 rounded-lg border border-slate-200 hover:border-emerald-400 bg-slate-50 transition-all text-center">
-                                <span class="text-lg">✓/✗</span><span class="text-[10px] font-bold mt-1">剔與交叉</span>
-                            </button>
-                            <button id="ctrl-mode-ab" onclick="setGlobalMode('ab')" class="mode-select-btn flex flex-col items-center justify-center py-2 px-1 rounded-lg border border-slate-200 hover:border-emerald-400 bg-slate-50 transition-all text-center">
-                                <span class="text-lg font-black text-slate-700">A/B</span><span class="text-[10px] font-bold mt-1">A 與 B</span>
-                            </button>
-                            <button id="ctrl-mode-abcd" onclick="setGlobalMode('abcd')" class="mode-select-btn flex flex-col items-center justify-center py-2 px-1 rounded-lg border border-slate-200 hover:border-emerald-400 bg-slate-50 transition-all text-center">
-                                <span class="text-lg font-black text-slate-700">ABCD</span><span class="text-[10px] font-bold mt-1">四選一</span>
-                            </button>
-                            <button id="ctrl-mode-drawing" onclick="setGlobalMode('drawing')" class="mode-select-btn flex flex-col items-center justify-center py-2 px-1 rounded-lg border border-slate-200 hover:border-emerald-400 bg-slate-50 transition-all text-center">
-                                <span class="text-lg">🎨</span><span class="text-[10px] font-bold mt-1">畫簿白板</span>
-                            </button>
+                            <button id="ctrl-mode-yes_no"  onclick="setGlobalMode('yes_no')"  class="mode-btn flex flex-col items-center justify-center py-2 px-1 rounded-lg border border-slate-200 hover:border-emerald-400 bg-slate-50 transition-all text-center"><span class="text-lg">✓/✗</span><span class="text-[10px] font-bold mt-1">剔與交叉</span></button>
+                            <button id="ctrl-mode-ab"      onclick="setGlobalMode('ab')"      class="mode-btn flex flex-col items-center justify-center py-2 px-1 rounded-lg border border-slate-200 hover:border-emerald-400 bg-slate-50 transition-all text-center"><span class="text-lg font-black text-slate-700">A/B</span><span class="text-[10px] font-bold mt-1">A 與 B</span></button>
+                            <button id="ctrl-mode-abcd"    onclick="setGlobalMode('abcd')"    class="mode-btn flex flex-col items-center justify-center py-2 px-1 rounded-lg border border-slate-200 hover:border-emerald-400 bg-slate-50 transition-all text-center"><span class="text-lg font-black text-slate-700">ABCD</span><span class="text-[10px] font-bold mt-1">四選一</span></button>
+                            <button id="ctrl-mode-drawing" onclick="setGlobalMode('drawing')" class="mode-btn flex flex-col items-center justify-center py-2 px-1 rounded-lg border border-slate-200 hover:border-emerald-400 bg-slate-50 transition-all text-center"><span class="text-lg">🎨</span><span class="text-[10px] font-bold mt-1">畫簿白板</span></button>
                         </div>
                     </div>
 
                     <div class="flex-1 overflow-y-auto p-4 space-y-4">
-                        <div id="teacher-statistics-panel" class="bg-white rounded-xl p-4 shadow-sm border border-slate-100 focus-hide">
+                        <div id="teacher-statistics-panel" class="bg-white rounded-xl p-4 shadow-sm border border-slate-100 focus-hide" style="display:none">
                             <div class="flex justify-between items-center mb-3">
                                 <span class="text-xs font-bold text-slate-700">📊 實時統計</span>
                                 <span id="answers-total-badge" class="bg-emerald-100 text-emerald-700 text-[10px] px-2 py-0.5 rounded-full font-bold">已交: 0</span>
@@ -232,9 +213,7 @@
                             <div id="stats-chart-container" class="space-y-2"></div>
                         </div>
                         <div>
-                            <div class="flex justify-between items-center mb-3 px-1">
-                                <h3 class="text-xs font-bold text-slate-700">👥 全班回應展示</h3>
-                            </div>
+                            <h3 class="text-xs font-bold text-slate-700 mb-3 px-1">👥 全班回應展示</h3>
                             <div id="student-grid" class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 gap-3 pb-8"></div>
                         </div>
                     </div>
@@ -243,15 +222,15 @@
         </section>
     </main>
 
-    <!-- QR Code 彈出視窗 -->
-    <div id="qr-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] hidden flex items-center justify-center p-4 transition-opacity opacity-0">
-        <div class="bg-white rounded-3xl p-6 max-w-xs w-full flex flex-col items-center text-center shadow-2xl relative transform scale-95 transition-transform" id="qr-modal-content">
+    <!-- QR Modal -->
+    <div id="qr-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] hidden flex items-center justify-center p-4 opacity-0 transition-opacity">
+        <div id="qr-modal-content" class="bg-white rounded-3xl p-6 max-w-xs w-full flex flex-col items-center text-center shadow-2xl relative scale-95 transition-transform">
             <button onclick="closeQrModal()" class="absolute top-4 right-4 text-slate-400 hover:text-slate-700 bg-slate-100 p-1.5 rounded-full"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
             <div class="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 text-2xl mb-3">📱</div>
             <h3 class="text-lg font-black text-slate-800 mb-1">邀請學生加入</h3>
-            <p class="text-xs text-slate-500 mb-4">請將此二維碼投影至大螢幕，學生掃描後會直接進入<strong class="text-indigo-600">回答端</strong>。</p>
+            <p class="text-xs text-slate-500 mb-4">學生掃描後直接進入<strong class="text-indigo-600">回答端</strong>。</p>
             <div class="p-3 bg-white border-2 border-indigo-100 rounded-2xl shadow-sm inline-block">
-                <img id="qrcode-img" src="" alt="請稍候..." class="w-[150px] h-[150px]">
+                <img id="qrcode-img" src="" alt="QR Code" class="w-[150px] h-[150px]">
             </div>
             <div class="w-full mt-5">
                 <p class="text-[10px] font-bold text-slate-400 mb-1 text-left px-1">或複製專屬網址：</p>
@@ -263,619 +242,698 @@
         </div>
     </div>
 
-    <!-- 畫布放大燈箱 -->
+    <!-- 畫作燈箱 -->
     <div id="drawing-lightbox" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[9999] hidden flex items-center justify-center p-4">
-        <div class="bg-white rounded-3xl p-6 max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl transition-all scale-95 transform">
+        <div class="bg-white rounded-3xl p-6 max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl scale-95 transition-transform">
             <div class="flex justify-between items-center pb-4 border-b border-slate-100">
                 <div class="flex items-center gap-2">
                     <span class="text-2xl">🏆</span>
                     <div>
-                        <h4 id="lightbox-student-title" class="font-bold text-lg text-slate-800">學生畫作</h4>
-                        <p id="lightbox-student-subtitle" class="text-xs text-slate-400">學生姓名</p>
+                        <h4 id="lightbox-title" class="font-bold text-lg text-slate-800">學生畫作</h4>
+                        <p id="lightbox-subtitle" class="text-xs text-slate-400">學生姓名</p>
                     </div>
                 </div>
                 <button onclick="closeLightbox()" class="bg-slate-100 hover:bg-slate-200 p-2 rounded-full"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg></button>
             </div>
-            <div class="flex-1 overflow-hidden flex items-center justify-center bg-slate-100 border border-slate-200 rounded-2xl my-4 relative">
-                <img id="lightbox-canvas-image" src="" alt="大圖" class="w-full h-full object-contain bg-white shadow-sm">
+            <div class="flex-1 overflow-hidden flex items-center justify-center bg-slate-100 border border-slate-200 rounded-2xl my-4">
+                <img id="lightbox-img" src="" alt="大圖" class="w-full h-full object-contain bg-white">
             </div>
             <div class="flex justify-end">
-                <button onclick="closeLightbox()" class="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg">關閉投影</button>
+                <button onclick="closeLightbox()" class="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg">關閉</button>
             </div>
         </div>
     </div>
 
-    <!-- ============================================================
-         🔧 修正版通訊核心：雙核並行架構
-         核心1: BroadcastChannel（同瀏覽器跨分頁，0ms）
-         核心2: Ntfy.sh 輪詢（跨裝置跨網路，2.5s）
-         
-         修正重點：
-         1. 老師端與學生端【同時】啟動 Ntfy 輪詢，不再等 PeerJS 失敗才啟動
-         2. 移除 PeerJS（其 ID 衝突問題是導致連線失敗的根本原因）
-         3. 角色判斷在通訊引擎初始化之前完成
-    ============================================================ -->
-    <script>
-        // ── 全域狀態 ──────────────────────────────────────────────
-        let roomCode = '';
-        let currentMode = 'yes_no';
-        let currentRole = 'split';
-        let localResponses = {};
-        let localStudent = { id: 'stu_' + Math.random().toString(36).substr(2, 6), name: '', isLoggedIn: false };
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  ClassView v4 — SSE 即時推送架構
+//
+//  通訊設計（完全無輪詢）：
+//  ┌─────────────────────────────────────────────────────────┐
+//  │  老師 → 學生：ntfy topic  cv_rm_{roomCode}  (Room Msg) │
+//  │  學生 → 老師：ntfy topic  cv_rs_{roomCode}  (Response) │
+//  │                                                         │
+//  │  每個角色用 EventSource (SSE) 訂閱對應 topic           │
+//  │  SSE 是 HTTP 長連線，伺服器主動推送，延遲 <100ms        │
+//  │  斷線自動重連（EventSource 內建行為）                   │
+//  └─────────────────────────────────────────────────────────┘
+//
+//  去重機制：
+//  - 每條訊息帶 msgId（隨機字串）
+//  - seenMsgIds Set 記錄已處理的 msgId
+//  - 清空答案時清除 seenMsgIds，讓學生可以重新作答
+// ═══════════════════════════════════════════════════════════════
 
-        // ✅ 修正A：用 ntfy_id 集合做去重，完全不依賴 ts 比較
-        // 這解決了「裝置時鐘不同步」與「清空後 ts 衝突」的問題
-        const seenNtfyIds = new Set();
-        // ✅ 修正B：每次答案都重試發送，確保網路抖動時不丟失
-        const RETRY_COUNT = 3;
-        const RETRY_DELAY = 800; // ms
+// ── 全域狀態 ──────────────────────────────────────────────────
+const urlParams     = new URLSearchParams(window.location.search);
+const isForceStudent = urlParams.get('role') === 'student';
 
-        const urlParams = new URLSearchParams(window.location.search);
-        const isForceStudent = urlParams.get('role') === 'student';
+let roomCode    = '';
+let currentMode = 'yes_no';
+let currentRole = 'split';
+let localResponses = {};
+let localStudent = {
+    id: 'stu_' + Math.random().toString(36).substr(2, 8),
+    name: '',
+    isLoggedIn: false
+};
 
-        // 畫簿變數
-        const canvas = document.getElementById('student-canvas');
-        const ctx = canvas.getContext('2d');
-        let isDrawing = false, lastX = 0, lastY = 0;
-        let drawColor = '#000000', drawWidth = 5, drawTool = 'pen';
-        let drawThrottleTimeout = null;
+// 去重集合（只存 msgId，不存 ts）
+const seenMsgIds = new Set();
 
-        // 通訊變數
-        let bc = null;
-        let ntfyTimer = null;
-        // 輪詢時間戳：使用比現在早 5 秒，避免漏掉剛發送的訊息
-        let lastRoomPollTime = Math.floor(Date.now() / 1000) - 5;
-        let lastResPollTime  = Math.floor(Date.now() / 1000) - 5;
+// SSE 連線物件
+let sseTeacher = null;   // 老師端：監聽學生答案
+let sseStudent = null;   // 學生端：監聽老師指令
+let bcChannel  = null;   // BroadcastChannel（同瀏覽器跨分頁）
 
-        // ── 初始化（修正版：先定角色，再啟引擎）─────────────────
-        window.addEventListener('load', () => {
-            initRoomCode();
+// 畫布
+const canvas = document.getElementById('student-canvas');
+const ctx    = canvas.getContext('2d');
+let isDrawing = false, lastX = 0, lastY = 0;
+let drawColor = '#000000', drawWidth = 5, drawTool = 'pen';
+let drawThrottle = null;
 
-            // ✅ 修正1：先確定角色，再做任何通訊初始化
-            if (isForceStudent) {
-                currentRole = 'student';
-                document.getElementById('role-switcher').classList.add('hidden');
-                switchView('student');
-            } else {
-                currentRole = 'split';
-                switchView('split');
-                setTimeout(generateStudentQRCode, 500);
+// ── 啟動 ──────────────────────────────────────────────────────
+window.addEventListener('load', () => {
+    initRoomCode();
+
+    // 先確定角色，再初始化通訊
+    if (isForceStudent) {
+        currentRole = 'student';
+        document.getElementById('role-switcher').classList.add('hidden');
+    } else {
+        currentRole = 'split';
+    }
+
+    restoreLocalState();
+    setupCanvas();
+    applyView(currentRole);          // 套用 UI 佈局
+    initSSE(currentRole);            // 建立 SSE 連線
+    updateStudentModeUI(currentMode);
+
+    if (!isForceStudent) setTimeout(generateQRCode, 300);
+});
+
+// ── 房號 ──────────────────────────────────────────────────────
+function initRoomCode() {
+    const urlRoom = urlParams.get('room');
+    if (urlRoom) {
+        roomCode = urlRoom.toUpperCase();
+    } else {
+        roomCode = sessionStorage.getItem('cyk_room')
+                || 'CYK' + Math.floor(1000 + Math.random() * 9000);
+        sessionStorage.setItem('cyk_room', roomCode);
+        try {
+            const newUrl = location.protocol + '//' + location.host + location.pathname
+                         + '?room=' + roomCode + (isForceStudent ? '&role=student' : '');
+            history.replaceState({}, '', newUrl);
+        } catch(e) {}
+    }
+    document.getElementById('teacher-room-display').innerText   = `房號: ${roomCode}`;
+    document.getElementById('student-login-room-display').innerText = `房號：${roomCode}`;
+}
+
+// ── 本地狀態恢復 ──────────────────────────────────────────────
+function restoreLocalState() {
+    try {
+        const s = JSON.parse(localStorage.getItem('cyk_student'));
+        if (s && s.isLoggedIn) { localStudent = s; showStudentWorkspace(); }
+    } catch(e) {}
+    try {
+        const r = JSON.parse(localStorage.getItem('cyk_res_' + roomCode));
+        if (r) { localResponses = r; renderDashboard(); }
+    } catch(e) {}
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  SSE 通訊核心
+// ═══════════════════════════════════════════════════════════════
+
+function initSSE(role) {
+    // 關閉舊連線
+    if (sseTeacher) { sseTeacher.close(); sseTeacher = null; }
+    if (sseStudent) { sseStudent.close(); sseStudent = null; }
+
+    // BroadcastChannel（同一瀏覽器跨分頁，0ms）
+    try {
+        if (bcChannel) bcChannel.close();
+        bcChannel = new BroadcastChannel('cv_' + roomCode);
+        bcChannel.onmessage = (e) => handleBCMessage(e.data);
+    } catch(e) {}
+
+    if (role === 'student') {
+        // 學生端：訂閱老師的指令頻道
+        connectSSE_Student();
+    } else {
+        // 老師端（split / teacher）：訂閱學生的答案頻道
+        connectSSE_Teacher();
+    }
+}
+
+// 老師端 SSE：監聽學生答案
+function connectSSE_Teacher() {
+    const url = `https://ntfy.sh/cv_rs_${roomCode}/sse`;
+    sseTeacher = new EventSource(url);
+
+    sseTeacher.onopen = () => {
+        updateStatus('🟢 已連線（即時推送）', 'bg-emerald-500');
+        document.getElementById('student-conn-status').innerText = '即時連線中';
+    };
+
+    sseTeacher.onmessage = (e) => {
+        try {
+            const d   = JSON.parse(e.data);
+            const msg = JSON.parse(d.message);
+            if (!msg || !msg.type) return;
+
+            // 去重
+            if (msg.msgId) {
+                if (seenMsgIds.has(msg.msgId)) return;
+                seenMsgIds.add(msg.msgId);
             }
 
-            restoreLocalState();
-            setupCanvas();
-            initCommsEngine(); // ✅ 此時 currentRole 已正確設定
-            updateStudentUIPanel(currentMode);
+            if (msg.type === 'ANS') {
+                writeAnswer(msg.payload);
+            } else if (msg.type === 'REQ_STATE') {
+                // 學生請求目前題型
+                ntfySend('STATE', { mode: currentMode });
+            }
+        } catch(e2) {}
+    };
+
+    sseTeacher.onerror = () => {
+        updateStatus('🟡 重新連線中...', 'bg-amber-500');
+        // EventSource 會自動重連，不需要手動處理
+    };
+}
+
+// 學生端 SSE：監聽老師指令
+function connectSSE_Student() {
+    const url = `https://ntfy.sh/cv_rm_${roomCode}/sse`;
+    sseStudent = new EventSource(url);
+
+    sseStudent.onopen = () => {
+        updateStatus('🟢 已連線（即時推送）', 'bg-emerald-500');
+        document.getElementById('student-conn-status').innerText = '即時連線中';
+        // 連線成功後，請求老師目前的題型
+        ntfySend('REQ_STATE', {});
+    };
+
+    sseStudent.onmessage = (e) => {
+        try {
+            const d   = JSON.parse(e.data);
+            const msg = JSON.parse(d.message);
+            if (!msg || !msg.type) return;
+
+            // 去重
+            if (msg.msgId) {
+                if (seenMsgIds.has(msg.msgId)) return;
+                seenMsgIds.add(msg.msgId);
+            }
+
+            if (msg.type === 'STATE') {
+                applyModeChange(msg.payload.mode);
+            } else if (msg.type === 'CLEAR') {
+                executeClear(false); // false = 不廣播（避免迴圈）
+            }
+        } catch(e2) {}
+    };
+
+    sseStudent.onerror = () => {
+        updateStatus('🟡 重新連線中...', 'bg-amber-500');
+    };
+}
+
+// BroadcastChannel 訊息處理（同一瀏覽器跨分頁）
+function handleBCMessage(data) {
+    const { type, payload, msgId } = data;
+    if (msgId) {
+        if (seenMsgIds.has('bc_' + msgId)) return;
+        seenMsgIds.add('bc_' + msgId);
+    }
+    if (type === 'ANS'   && currentRole !== 'student') writeAnswer(payload);
+    if (type === 'STATE' && currentRole === 'student')  applyModeChange(payload.mode);
+    if (type === 'CLEAR') executeClear(false);
+}
+
+// ── Ntfy 發送 ─────────────────────────────────────────────────
+function ntfySend(type, payload) {
+    // 老師→學生：cv_rm_（Room Messages）
+    // 學生→老師：cv_rs_（Response Stream）
+    // REQ_STATE 是學生發給老師，所以走 cv_rs_
+    const isToStudents = (type === 'STATE' || type === 'CLEAR');
+    const topic  = isToStudents ? `cv_rm_${roomCode}` : `cv_rs_${roomCode}`;
+    const msgId  = Math.random().toString(36).substr(2, 10);
+    const body   = JSON.stringify({ type, payload, msgId });
+
+    // 發送（最多重試 2 次）
+    const attempt = (n) => {
+        fetch('https://ntfy.sh/' + topic, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body
+        }).then(r => {
+            if (!r.ok && n > 0) setTimeout(() => attempt(n - 1), 1000);
+        }).catch(() => {
+            if (n > 0) setTimeout(() => attempt(n - 1), 1000);
         });
+    };
+    attempt(2);
 
-        // ── 房號初始化 ────────────────────────────────────────────
-        function initRoomCode() {
-            let urlRoom = urlParams.get('room');
-            if (urlRoom) {
-                roomCode = urlRoom.toUpperCase();
-            } else {
-                roomCode = sessionStorage.getItem('cyk_room') || 'CYK' + Math.floor(1000 + Math.random() * 9000);
-                sessionStorage.setItem('cyk_room', roomCode);
-                try {
-                    if (!window.location.protocol.startsWith('blob') && !window.location.protocol.startsWith('data')) {
-                        const newUrl = window.location.protocol + '//' + window.location.host + window.location.pathname + '?room=' + roomCode + (isForceStudent ? '&role=student' : '');
-                        window.history.replaceState({ path: newUrl }, '', newUrl);
-                    }
-                } catch(e) {}
-            }
-            document.getElementById('teacher-room-display').innerText = `房號: ${roomCode}`;
-            document.getElementById('student-login-room-display').innerText = `房號：${roomCode}`;
-        }
+    return msgId;
+}
 
-        // ── 本地狀態恢復 ──────────────────────────────────────────
-        function restoreLocalState() {
-            try {
-                const s = JSON.parse(localStorage.getItem('cyk_student'));
-                if (s && s.isLoggedIn) { localStudent = s; showStudentWorkspace(); }
-            } catch(e) {}
-            try {
-                const r = JSON.parse(localStorage.getItem(`cyk_res_${roomCode}`));
-                if (r) { localResponses = r; renderTeacherDashboard(localResponses, currentMode); }
-            } catch(e) {}
-        }
+// ── 業務邏輯 ──────────────────────────────────────────────────
 
-        // ── 通訊引擎初始化（雙核並行）────────────────────────────
-        function initCommsEngine() {
-            // ── 核心1：BroadcastChannel（同一瀏覽器跨分頁，0ms 延遲）──
-            try {
-                bc = new BroadcastChannel(`cv_sync_${roomCode}`);
-                bc.onmessage = (e) => {
-                    const { type, payload } = e.data;
-                    if (type === 'STATE' && currentRole === 'student') handleRoomStateUpdate(payload);
-                    if (type === 'ANS'   && currentRole !== 'student') handleIncomingAnswer(payload);
-                    if (type === 'CLEAR') executeClear();
-                };
-            } catch(e) { console.warn('BroadcastChannel not supported.'); }
+// 寫入學生答案（老師端）
+function writeAnswer(payload) {
+    if (!payload || !payload.id) return;
+    localResponses[payload.id] = {
+        name:   payload.name,
+        answer: payload.ans,
+        ts:     payload.ts || Date.now()
+    };
+    localStorage.setItem('cyk_res_' + roomCode, JSON.stringify(localResponses));
+    if (currentRole !== 'student') renderDashboard();
+}
 
-            // ── 核心2：Ntfy.sh 輪詢（跨裝置跨網路，2.5s 輪詢）──────
-            // ✅ 修正2：老師端與學生端【同時】啟動輪詢，不再等待 PeerJS 失敗
-            startNtfyPolling();
+// 套用題型變更（學生端）
+function applyModeChange(mode) {
+    if (!mode || currentMode === mode) return;
+    currentMode = mode;
+    updateStudentModeUI(mode);
+    updateTeacherModeButtons(mode);
+}
 
-            // ✅ 修正3：學生端啟動後，主動向老師端請求目前題型
-            if (currentRole === 'student') {
-                ntfySend('REQ_STATE', {});
-            }
+// 清空答案
+function executeClear(broadcast = true) {
+    localResponses = {};
+    localStorage.removeItem('cyk_res_' + roomCode);
+    // 清空去重集合，讓學生可以重新作答
+    seenMsgIds.clear();
+    clearCanvasLocal();
+    if (currentRole !== 'student') renderDashboard();
+    document.querySelectorAll('.student-ans-btn').forEach(btn => {
+        btn.classList.remove('scale-125', 'ring-4', 'ring-indigo-400', 'shadow-2xl', 'z-10', 'opacity-40', 'scale-95');
+    });
+    document.getElementById('display-last-submit').innerHTML =
+        '<span class="text-slate-600">等待作答...</span>';
 
-            updateStatus('🟢 連線就緒', 'bg-emerald-500');
-        }
+    if (broadcast) {
+        const msgId = Math.random().toString(36).substr(2, 10);
+        if (bcChannel) bcChannel.postMessage({ type: 'CLEAR', msgId });
+        ntfySend('CLEAR', {});
+    }
+}
 
-        // ── Ntfy 輪詢（老師端與學生端都執行）────────────────────
-        function startNtfyPolling() {
-            if (ntfyTimer) return;
-            ntfyTimer = setInterval(async () => {
-                try {
-                    if (currentRole === 'student') {
-                        // 學生端：監聽老師發出的房間狀態（題型切換、清空）
-                        const res  = await fetch(`https://ntfy.sh/cv_rm_${roomCode}/json?poll=1&since=${lastRoomPollTime}`);
-                        const text = await res.text();
-                        text.trim().split('\n').forEach(line => {
-                            if (!line) return;
-                            try {
-                                const d   = JSON.parse(line);
-                                // ✅ 修正C：用 ntfy 訊息的唯一 id 去重，不用 ts
-                                if (seenNtfyIds.has(d.id)) return;
-                                seenNtfyIds.add(d.id);
-                                if (d.time >= lastRoomPollTime) lastRoomPollTime = d.time + 1;
-                                const msg = JSON.parse(d.message);
-                                if (msg.type === 'STATE') handleRoomStateUpdate(msg.payload);
-                                if (msg.type === 'CLEAR') executeClear();
-                            } catch(e) {}
-                        });
-                    } else {
-                        // 老師端：監聽學生發出的答案
-                        const res  = await fetch(`https://ntfy.sh/cv_rs_${roomCode}/json?poll=1&since=${lastResPollTime}`);
-                        const text = await res.text();
-                        text.trim().split('\n').forEach(line => {
-                            if (!line) return;
-                            try {
-                                const d   = JSON.parse(line);
-                                // ✅ 修正C：用 ntfy 訊息的唯一 id 去重，不用 ts
-                                if (seenNtfyIds.has(d.id)) return;
-                                seenNtfyIds.add(d.id);
-                                if (d.time >= lastResPollTime) lastResPollTime = d.time + 1;
-                                const msg = JSON.parse(d.message);
-                                if (msg.type === 'ANS')       handleIncomingAnswer(msg.payload);
-                                if (msg.type === 'REQ_STATE') ntfySend('STATE', { mode: currentMode });
-                            } catch(e) {}
-                        });
-                    }
-                } catch(e) {}
-            }, 2500);
-        }
+// ── 老師操作 ──────────────────────────────────────────────────
 
-        // ── Ntfy 發送（含重試機制）────────────────────────────────
-        // ✅ 修正B：重試發送，解決學校 Wi-Fi 封包丟失問題
-        function ntfySend(type, payload, retries = RETRY_COUNT) {
-            const topic = (type === 'STATE' || type === 'CLEAR') ? `cv_rm_${roomCode}` : `cv_rs_${roomCode}`;
-            const body  = JSON.stringify({ type, payload, ts: Date.now() });
-            const attempt = (n) => {
-                fetch(`https://ntfy.sh/${topic}`, { method: 'POST', body })
-                    .then(r => { if (!r.ok && n > 0) setTimeout(() => attempt(n - 1), RETRY_DELAY); })
-                    .catch(() => { if (n > 0) setTimeout(() => attempt(n - 1), RETRY_DELAY); });
-            };
-            attempt(retries);
-        }
+window.setGlobalMode = function(mode) {
+    currentMode = mode;
+    updateStudentModeUI(mode);
+    updateTeacherModeButtons(mode);
+    executeClear(false); // 先清空，不廣播 CLEAR
 
-        // ── 狀態指示燈 ────────────────────────────────────────────
-        function updateStatus(text, colorClass) {
-            document.getElementById('cloud-status-text').innerText = text;
-            document.getElementById('cloud-status-dot').className = `w-2.5 h-2.5 rounded-full animate-pulse ${colorClass}`;
-        }
+    const msgId = Math.random().toString(36).substr(2, 10);
+    const payload = { mode };
+    // BroadcastChannel 廣播
+    if (bcChannel) bcChannel.postMessage({ type: 'STATE', payload, msgId });
+    // Ntfy 推送給所有學生
+    ntfySend('STATE', payload);
+    showToast('已切換題型：' + mode, 'success');
+};
 
-        // ── 業務邏輯：接收房間狀態更新（學生端）────────────────
-        function handleRoomStateUpdate(payload) {
-            if (currentMode !== payload.mode) {
-                currentMode = payload.mode;
-                updateStudentUIPanel(currentMode);
-                updateTeacherModeButtons(currentMode);
-            }
-        }
+window.clearAllResponses = function() {
+    executeClear(true);
+    showToast('已清空所有答案！', 'success');
+};
 
-        // ── 業務邏輯：接收學生答案（老師端）─────────────────────
-        // ✅ 修正A：改用 payload.msgId 做去重，不再比較 ts
-        // 這解決了「清空後學生重新作答被舊 ts 擋住」的問題
-        function handleIncomingAnswer(payload) {
-            // 如果有 msgId，用它去重（Ntfy 路徑已在輪詢層去重，這裡主要處理 BroadcastChannel 重複）
-            if (payload.msgId && seenNtfyIds.has('bc_' + payload.msgId)) return;
-            if (payload.msgId) seenNtfyIds.add('bc_' + payload.msgId);
-            localResponses[payload.id] = { name: payload.name, answer: payload.ans, ts: payload.ts };
-            localStorage.setItem(`cyk_res_${roomCode}`, JSON.stringify(localResponses));
-            if (currentRole !== 'student') renderTeacherDashboard(localResponses, currentMode);
-        }
+// ── 學生操作 ──────────────────────────────────────────────────
 
-        // ── 業務邏輯：清空答案 ────────────────────────────────────
-        function executeClear() {
-            localResponses = {};
-            localStorage.removeItem(`cyk_res_${roomCode}`);
-            // ✅ 修正D：清空時同時清除 seenNtfyIds 中的 bc_ 前綴項目
-            // 讓學生清空後重新作答時，BroadcastChannel 不會被去重邏輯擋住
-            for (const id of [...seenNtfyIds]) {
-                if (id.startsWith('bc_')) seenNtfyIds.delete(id);
-            }
-            clearCanvasLocal();
-            if (currentRole !== 'student') renderTeacherDashboard({}, currentMode);
-            document.querySelectorAll('.student-ans-btn').forEach(btn => {
-                btn.classList.remove('scale-125', 'ring-4', 'ring-indigo-400', 'shadow-2xl', 'z-10', 'opacity-40', 'scale-95');
-            });
-            document.getElementById('display-last-submit').innerHTML = `<span class="text-slate-600">等待作答...</span>`;
-        }
+window.submitAnswer = function(ans) {
+    if (!localStudent.isLoggedIn) return showToast('請先登入！', 'warning');
+    if (!ans.startsWith('data:image')) highlightAnswer(ans);
 
-        // ── 老師：切換題型 ────────────────────────────────────────
-        window.setGlobalMode = function(mode) {
-            currentMode = mode;
-            updateStudentUIPanel(mode);
-            updateTeacherModeButtons(mode);
-            const payload = { mode };
-            if (bc) bc.postMessage({ type: 'STATE', payload });
-            ntfySend('STATE', payload);
-            executeClear();
-        };
+    const payload = {
+        id:   localStudent.id,
+        name: localStudent.name,
+        ans,
+        ts:   Date.now()
+    };
 
-        // ── 老師：清空所有答案 ────────────────────────────────────
-        window.clearAllResponses = function() {
-            executeClear();
-            if (bc) bc.postMessage({ type: 'CLEAR' });
-            ntfySend('CLEAR', {});
-            showToast('已清空所有答案！', 'success');
-        };
+    // 1. 本地直接寫入（split 模式下老師立即看到）
+    writeAnswer(payload);
 
-        // ── 學生：提交答案 ────────────────────────────────────────
-        window.submitAnswer = function(ans) {
-            if (!localStudent.isLoggedIn) return showToast('請先登入！', 'warning');
-            if (!ans.startsWith('data:image')) highlightSelectedAnswer(ans);
+    // 2. BroadcastChannel（同一瀏覽器跨分頁，0ms）
+    const msgId = Math.random().toString(36).substr(2, 10);
+    seenMsgIds.add('bc_' + msgId); // 先標記，防止自己的 BC 訊息被重複處理
+    if (bcChannel) bcChannel.postMessage({ type: 'ANS', payload, msgId });
 
-            // ✅ 修正E：每個答案附帶唯一 msgId，用於 BroadcastChannel 去重
-            // 這解決了 split 模式下「本地寫入 + BC 觸發」雙重寫入問題
-            const msgId   = Math.random().toString(36).substr(2, 9);
-            const payload = { id: localStudent.id, name: localStudent.name, ans, ts: Date.now(), msgId };
+    // 3. Ntfy SSE 推送（跨裝置，<100ms）
+    ntfySend('ANS', payload);
 
-            // 本地寫入（在 split 模式下讓老師端即時看到）
-            // ✅ 先標記此 msgId，防止 BroadcastChannel 回調再次觸發
-            seenNtfyIds.add('bc_' + msgId);
-            handleIncomingAnswer(payload);
-            // BroadcastChannel（同一瀏覽器跨分頁）
-            if (bc) bc.postMessage({ type: 'ANS', payload });
-            // Ntfy（跨裝置跨網路，含重試）
-            ntfySend('ANS', payload);
+    if (!ans.startsWith('data:image')) {
+        showToast('已傳送！', 'success');
+        document.getElementById('display-last-submit').innerHTML =
+            '<span class="text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-bold">✅ 已傳送答案</span>';
+    }
+};
 
-            if (!ans.startsWith('data:image')) {
-                showToast('已傳送！', 'success');
-                document.getElementById('display-last-submit').innerHTML = `<span class="text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-bold">已傳送答案</span>`;
-            }
-        };
+window.loginStudent = function() {
+    const name = document.getElementById('input-name').value.trim();
+    if (!name) return showToast('請輸入姓名！', 'warning');
+    localStudent.name      = name;
+    localStudent.isLoggedIn = true;
+    localStorage.setItem('cyk_student', JSON.stringify(localStudent));
+    showStudentWorkspace();
+    showToast('歡迎 ' + name + '！', 'success');
+    // 登入後請求目前題型
+    ntfySend('REQ_STATE', {});
+    setTimeout(() => dispatchEvent(new Event('resize')), 200);
+};
 
-        // ── 學生：登入 ───────────────────────────────────────────
-        window.loginStudent = function() {
-            const name = document.getElementById('input-name').value.trim();
-            if (!name) return showToast('請輸入姓名！', 'warning');
-            localStudent.name = name;
-            localStudent.isLoggedIn = true;
-            localStorage.setItem('cyk_student', JSON.stringify(localStudent));
-            showStudentWorkspace();
-            showToast(`歡迎 ${name}！`, 'success');
-            // 登入後主動請求目前題型
-            ntfySend('REQ_STATE', {});
-            setTimeout(() => window.dispatchEvent(new Event('resize')), 200);
-        };
+function showStudentWorkspace() {
+    document.getElementById('student-login-box').classList.add('hidden');
+    document.getElementById('student-workspace').classList.remove('hidden');
+    document.getElementById('student-badge').classList.remove('hidden');
+    document.getElementById('display-student-info').innerText = localStudent.name;
+}
 
-        function showStudentWorkspace() {
-            document.getElementById('student-login-box').classList.add('hidden');
-            document.getElementById('student-workspace').classList.remove('hidden');
-            document.getElementById('student-badge').classList.remove('hidden');
-            document.getElementById('display-student-info').innerText = localStudent.name;
-        }
+window.logoutStudent = function() {
+    localStudent.isLoggedIn = false;
+    localStorage.removeItem('cyk_student');
+    document.getElementById('student-login-box').classList.remove('hidden');
+    document.getElementById('student-workspace').classList.add('hidden');
+    document.getElementById('student-badge').classList.add('hidden');
+};
 
-        window.logoutStudent = function() {
-            localStudent.isLoggedIn = false;
-            localStorage.removeItem('cyk_student');
-            document.getElementById('student-login-box').classList.remove('hidden');
-            document.getElementById('student-workspace').classList.add('hidden');
-            document.getElementById('student-badge').classList.add('hidden');
-        };
+// ── UI 更新 ───────────────────────────────────────────────────
 
-        // ── 學生端 UI 更新 ────────────────────────────────────────
-        function updateStudentUIPanel(mode) {
-            const modeMap = { 'yes_no': '✓ / ✗ 剔和交叉', 'ab': 'A 和 B', 'abcd': 'A, B, C, D 選擇題', 'drawing': '畫簿白板模式' };
-            const txtEl = document.getElementById('student-current-mode-txt');
-            if (txtEl) txtEl.innerText = modeMap[mode] || '等待中';
-            ['mode-waiting', 'mode-student-yesno', 'mode-student-ab', 'mode-student-abcd', 'mode-student-draw'].forEach(id => {
-                document.getElementById(id).classList.add('hidden');
-            });
-            if      (mode === 'yes_no')  document.getElementById('mode-student-yesno').classList.remove('hidden');
-            else if (mode === 'ab')      document.getElementById('mode-student-ab').classList.remove('hidden');
-            else if (mode === 'abcd')    document.getElementById('mode-student-abcd').classList.remove('hidden');
-            else if (mode === 'drawing') { document.getElementById('mode-student-draw').classList.remove('hidden'); setTimeout(() => window.dispatchEvent(new Event('resize')), 100); }
-            else                         document.getElementById('mode-waiting').classList.remove('hidden');
-        }
+function updateStudentModeUI(mode) {
+    const modeNames = {
+        yes_no:  '✓ / ✗ 剔和交叉',
+        ab:      'A 和 B',
+        abcd:    'A, B, C, D 選擇題',
+        drawing: '畫簿白板模式'
+    };
+    const el = document.getElementById('student-current-mode-txt');
+    if (el) el.innerText = modeNames[mode] || '等待中';
 
-        // ── 老師端題型按鈕高亮 ───────────────────────────────────
-        function updateTeacherModeButtons(mode) {
-            document.querySelectorAll('.mode-select-btn').forEach(btn => {
-                btn.className = 'mode-select-btn flex flex-col items-center justify-center py-2 px-1 rounded-lg border border-slate-200 hover:border-emerald-400 bg-slate-50 transition-all text-center';
-            });
-            const activeBtn = document.getElementById(`ctrl-mode-${mode}`);
-            if (activeBtn) activeBtn.className = 'mode-select-btn flex flex-col items-center justify-center py-2 px-1 rounded-lg border-2 border-emerald-500 bg-emerald-50 shadow-md text-emerald-800 scale-105 transition-all text-center font-bold';
-        }
+    ['mode-waiting','mode-student-yesno','mode-student-ab','mode-student-abcd','mode-student-draw']
+        .forEach(id => document.getElementById(id).classList.add('hidden'));
 
-        // ── 老師端儀表板渲染 ──────────────────────────────────────
-        function renderTeacherDashboard(responses, activeMode) {
-            const grid = document.getElementById('student-grid');
-            grid.innerHTML = '';
-            let fullList = [];
-            Object.keys(responses).forEach(key => {
-                const res = responses[key];
-                if (res && res.answer !== undefined) fullList.push({ id: key, name: res.name, isLocal: key === localStudent.id, answer: res.answer });
-            });
-            fullList.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-Hant'));
+    const map = { yes_no:'mode-student-yesno', ab:'mode-student-ab', abcd:'mode-student-abcd', drawing:'mode-student-draw' };
+    if (map[mode]) {
+        document.getElementById(map[mode]).classList.remove('hidden');
+        if (mode === 'drawing') setTimeout(() => dispatchEvent(new Event('resize')), 100);
+    } else {
+        document.getElementById('mode-waiting').classList.remove('hidden');
+    }
+}
 
-            const submittedCount = fullList.filter(s => s.answer !== '').length;
-            document.getElementById('answers-total-badge').innerText = `已交: ${submittedCount}/${fullList.length}`;
+function updateTeacherModeButtons(mode) {
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+        btn.className = 'mode-btn flex flex-col items-center justify-center py-2 px-1 rounded-lg border border-slate-200 hover:border-emerald-400 bg-slate-50 transition-all text-center';
+    });
+    const active = document.getElementById('ctrl-mode-' + mode);
+    if (active) active.className = 'mode-btn flex flex-col items-center justify-center py-2 px-1 rounded-lg border-2 border-emerald-500 bg-emerald-50 shadow-md text-emerald-800 scale-105 transition-all text-center font-bold';
+}
 
-            let stats = {};
-            if      (activeMode === 'yes_no') stats = { '✓': 0, '✗': 0 };
-            else if (activeMode === 'ab')     stats = { 'A': 0, 'B': 0 };
-            else if (activeMode === 'abcd')   stats = { 'A': 0, 'B': 0, 'C': 0, 'D': 0 };
+function updateStatus(text, colorClass) {
+    document.getElementById('cloud-status-text').innerText = text;
+    document.getElementById('cloud-status-dot').className  = 'w-2.5 h-2.5 rounded-full animate-pulse ' + colorClass;
+}
 
-            if (fullList.length === 0) {
-                grid.innerHTML = `<div class="col-span-full py-8 text-center text-slate-400 bg-white rounded-xl border border-slate-100 shadow-inner"><p>目前尚無學生回答</p></div>`;
-            } else {
-                fullList.forEach(student => {
-                    const hasAnswer = student.answer && student.answer !== '';
-                    let cardContent = '';
-                    if (hasAnswer) {
-                        if (activeMode === 'drawing') {
-                            cardContent = `
-                                <div class="w-full aspect-[4/3] bg-white border border-slate-200 rounded-lg overflow-hidden relative group/canvas cursor-pointer shadow-inner canvas-card" onclick="openLightbox('${student.name}', '${student.answer}')">
-                                    <img src="${student.answer}" class="w-full h-full object-contain pointer-events-none" alt="drawing">
-                                    <div class="absolute inset-0 bg-black/5 opacity-0 group-hover/canvas:opacity-100 transition-opacity flex items-center justify-center">
-                                        <span class="bg-indigo-600 text-white text-[10px] px-2 py-0.5 rounded font-bold shadow-md">🔍 放大</span>
-                                    </div>
-                                </div>`;
-                        } else {
-                            const ansStr = student.answer;
-                            if (stats[ansStr] !== undefined) stats[ansStr]++;
-                            let colorStyle = 'bg-slate-100 text-slate-800 border-slate-200';
-                            if      (ansStr === '✓' || ansStr === 'A') colorStyle = 'bg-emerald-50 text-emerald-600 border-emerald-300 shadow-md';
-                            else if (ansStr === '✗' || ansStr === 'B') colorStyle = 'bg-rose-50 text-rose-600 border-rose-300 shadow-md';
-                            else if (ansStr === 'C') colorStyle = 'bg-purple-50 text-purple-600 border-purple-300 shadow-md';
-                            else if (ansStr === 'D') colorStyle = 'bg-teal-50 text-teal-600 border-teal-300 shadow-md';
-                            cardContent = `<div class="flex-1 flex items-center justify-center h-16 w-full"><span class="text-3xl font-black ${colorStyle} border-2 w-14 h-14 rounded-2xl flex items-center justify-center hover:scale-110 transition-transform">${ansStr}</span></div>`;
-                        }
-                    } else {
-                        cardContent = `<div class="flex-1 flex items-center justify-center h-16 text-slate-300"><span class="text-[10px] font-bold animate-pulse">等待中...</span></div>`;
-                    }
-                    grid.insertAdjacentHTML('beforeend', `
-                        <div class="rounded-xl p-2.5 shadow-sm border border-slate-200 bg-white flex flex-col justify-between hover:-translate-y-0.5 transition-transform">
-                            <div class="flex justify-between items-center mb-1.5 px-0.5">
-                                <span class="text-[11px] text-slate-700 font-bold truncate w-full text-center">${student.name || '未知'}</span>
+function highlightAnswer(selectedAns) {
+    document.querySelectorAll('.student-ans-btn').forEach(btn => {
+        btn.classList.remove('scale-125','ring-4','ring-indigo-400','shadow-2xl','z-10','opacity-40','scale-95');
+        if (btn.dataset.ans === selectedAns) btn.classList.add('scale-125','ring-4','ring-indigo-400','shadow-2xl','z-10');
+        else btn.classList.add('opacity-40','scale-95');
+    });
+}
+
+// ── 老師儀表板渲染 ────────────────────────────────────────────
+function renderDashboard() {
+    const grid = document.getElementById('student-grid');
+    grid.innerHTML = '';
+
+    const list = Object.entries(localResponses)
+        .map(([id, v]) => ({ id, name: v.name, answer: v.answer }))
+        .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-Hant'));
+
+    const submitted = list.filter(s => s.answer).length;
+    document.getElementById('answers-total-badge').innerText = `已交: ${submitted}/${list.length}`;
+
+    let stats = {};
+    if      (currentMode === 'yes_no') stats = { '✓': 0, '✗': 0 };
+    else if (currentMode === 'ab')     stats = { 'A': 0, 'B': 0 };
+    else if (currentMode === 'abcd')   stats = { 'A': 0, 'B': 0, 'C': 0, 'D': 0 };
+
+    if (list.length === 0) {
+        grid.innerHTML = '<div class="col-span-full py-8 text-center text-slate-400 bg-white rounded-xl border border-slate-100 shadow-inner"><p>目前尚無學生回答</p></div>';
+    } else {
+        list.forEach(s => {
+            let cardContent = '';
+            if (s.answer) {
+                if (currentMode === 'drawing') {
+                    cardContent = `
+                        <div class="w-full aspect-[4/3] bg-white border border-slate-200 rounded-lg overflow-hidden relative group/c cursor-pointer shadow-inner"
+                             onclick="openLightbox('${s.name}','${s.answer}')">
+                            <img src="${s.answer}" class="w-full h-full object-contain pointer-events-none" alt="drawing">
+                            <div class="absolute inset-0 bg-black/5 opacity-0 group-hover/c:opacity-100 transition-opacity flex items-center justify-center">
+                                <span class="bg-indigo-600 text-white text-[10px] px-2 py-0.5 rounded font-bold">🔍 放大</span>
                             </div>
-                            ${cardContent}
-                        </div>
-                    `);
-                });
-            }
-            renderStatisticsChart(stats, submittedCount, activeMode);
-        }
-
-        // ── 統計圖表渲染 ──────────────────────────────────────────
-        function renderStatisticsChart(stats, total, mode) {
-            const container = document.getElementById('stats-chart-container');
-            const panel     = document.getElementById('teacher-statistics-panel');
-            if (mode === 'drawing' || total === 0) { panel.style.display = 'none'; return; }
-            panel.style.display = '';
-            container.innerHTML = '';
-            Object.keys(stats).forEach(key => {
-                const percentage = total > 0 ? Math.round((stats[key] / total) * 100) : 0;
-                let colorClass = 'bg-slate-400';
-                if      (key === '✓' || key === 'A') colorClass = 'bg-emerald-500';
-                else if (key === '✗' || key === 'B') colorClass = 'bg-rose-500';
-                else if (key === 'C') colorClass = 'bg-purple-500';
-                else if (key === 'D') colorClass = 'bg-teal-500';
-                container.insertAdjacentHTML('beforeend', `
-                    <div class="flex items-center gap-2">
-                        <span class="w-6 font-black text-sm text-slate-700 text-right">${key}</span>
-                        <div class="flex-1 h-5 bg-slate-100 rounded-full overflow-hidden relative">
-                            <div class="h-full ${colorClass} transition-all duration-500" style="width: ${percentage}%"></div>
-                        </div>
-                        <span class="w-8 text-[10px] text-slate-500 font-bold text-left">${stats[key]}票</span>
-                    </div>
-                `);
-            });
-        }
-
-        // ── 畫布設定 ──────────────────────────────────────────────
-        function setupCanvas() {
-            function resizeCanvas() {
-                const container = canvas.parentElement;
-                if (!container || container.clientWidth === 0 || container.clientHeight === 0) return;
-                let hasBackup = false;
-                const tempCanvas = document.createElement('canvas');
-                if (canvas.width > 0 && canvas.height > 0) {
-                    tempCanvas.width = canvas.width; tempCanvas.height = canvas.height;
-                    try { tempCanvas.getContext('2d').drawImage(canvas, 0, 0); hasBackup = true; } catch(e) {}
+                        </div>`;
+                } else {
+                    if (stats[s.answer] !== undefined) stats[s.answer]++;
+                    const colorMap = {
+                        '✓': 'bg-emerald-50 text-emerald-600 border-emerald-300',
+                        'A':  'bg-emerald-50 text-emerald-600 border-emerald-300',
+                        '✗': 'bg-rose-50 text-rose-600 border-rose-300',
+                        'B':  'bg-rose-50 text-rose-600 border-rose-300',
+                        'C':  'bg-purple-50 text-purple-600 border-purple-300',
+                        'D':  'bg-teal-50 text-teal-600 border-teal-300'
+                    };
+                    const c = colorMap[s.answer] || 'bg-slate-100 text-slate-800 border-slate-200';
+                    cardContent = `<div class="flex-1 flex items-center justify-center h-16 w-full">
+                        <span class="text-3xl font-black ${c} border-2 w-14 h-14 rounded-2xl flex items-center justify-center hover:scale-110 transition-transform shadow-md">${s.answer}</span>
+                    </div>`;
                 }
-                canvas.width = container.clientWidth; canvas.height = container.clientHeight;
-                ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-                if (hasBackup && tempCanvas.width > 0) { try { ctx.drawImage(tempCanvas, 0, 0, canvas.width, canvas.height); } catch(e) {} }
-            }
-            window.addEventListener('resize', resizeCanvas);
-            resizeCanvas();
-
-            const start = e => { isDrawing = true; const r = canvas.getBoundingClientRect(); lastX = (e.clientX || (e.touches && e.touches[0].clientX)) - r.left; lastY = (e.clientY || (e.touches && e.touches[0].clientY)) - r.top; };
-            const drawAction = e => {
-                if (!isDrawing) return;
-                const r = canvas.getBoundingClientRect();
-                const currentX = (e.clientX || (e.touches && e.touches[0].clientX)) - r.left;
-                const currentY = (e.clientY || (e.touches && e.touches[0].clientY)) - r.top;
-                ctx.beginPath(); ctx.moveTo(lastX, lastY); ctx.lineTo(currentX, currentY);
-                if (drawTool === 'eraser') { ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = drawWidth * 2; }
-                else                       { ctx.strokeStyle = drawColor;  ctx.lineWidth = drawWidth; }
-                ctx.stroke(); lastX = currentX; lastY = currentY;
-                if (!drawThrottleTimeout) { drawThrottleTimeout = setTimeout(() => { submitDrawingLive(); drawThrottleTimeout = null; }, 1000); }
-            };
-            const end = () => { if (isDrawing) { isDrawing = false; submitDrawingLive(); } };
-
-            canvas.addEventListener('mousedown', start);
-            canvas.addEventListener('mousemove', drawAction);
-            canvas.addEventListener('mouseup', end);
-            canvas.addEventListener('mouseout', end);
-            canvas.addEventListener('touchstart', (e) => { e.preventDefault(); start(e); }, { passive: false });
-            canvas.addEventListener('touchmove',  (e) => { e.preventDefault(); drawAction(e); }, { passive: false });
-            canvas.addEventListener('touchend',   (e) => { e.preventDefault(); end(); });
-        }
-
-        function getCompressedDrawing() {
-            if (!canvas) return '';
-            const maxWidth = 150;
-            let width = canvas.width, height = canvas.height;
-            if (width > maxWidth) { height = Math.round((height * maxWidth) / width); width = maxWidth; }
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = width; tempCanvas.height = height;
-            const tCtx = tempCanvas.getContext('2d');
-            tCtx.fillStyle = '#FFFFFF'; tCtx.fillRect(0, 0, width, height);
-            tCtx.drawImage(canvas, 0, 0, width, height);
-            return tempCanvas.toDataURL('image/jpeg', 0.25);
-        }
-
-        function submitDrawingLive() { if (localStudent.isLoggedIn) window.submitAnswer(getCompressedDrawing()); }
-        function clearCanvasLocal()  { if (canvas) ctx.clearRect(0, 0, canvas.width, canvas.height); }
-        window.clearCanvas    = function() { clearCanvasLocal(); submitDrawingLive(); showToast('已清空畫簿！', 'info'); };
-        window.setDrawColor   = function(color, btn) { drawColor = color; drawTool = 'pen'; document.querySelectorAll('.color-btn').forEach(b => b.classList.replace('ring-2', 'ring-0')); btn.classList.replace('ring-0', 'ring-2'); };
-        window.setDrawTool    = function(tool) { drawTool = tool; };
-        window.setLineWidth   = function(val)  { drawWidth = val; };
-
-        // ── 畫線選取高亮 ──────────────────────────────────────────
-        function highlightSelectedAnswer(selectedAns) {
-            document.querySelectorAll('.student-ans-btn').forEach(btn => {
-                btn.classList.remove('scale-125', 'ring-4', 'ring-indigo-400', 'shadow-2xl', 'z-10', 'opacity-40', 'scale-95');
-                if (btn.dataset.ans === selectedAns) btn.classList.add('scale-125', 'ring-4', 'ring-indigo-400', 'shadow-2xl', 'z-10');
-                else btn.classList.add('opacity-40', 'scale-95');
-            });
-        }
-
-        // ── 視圖切換 ──────────────────────────────────────────────
-        window.switchView = function(view) {
-            currentRole = view;
-            const studentCol = document.getElementById('student-container');
-            const teacherCol = document.getElementById('teacher-container');
-            const pPanel     = document.getElementById('presentation-panel');
-            const dPanel     = document.getElementById('dashboard-panel');
-
-            ['btn-split', 'btn-teacher', 'btn-student'].forEach(id => {
-                document.getElementById(id).className = 'whitespace-nowrap flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all text-slate-600 hover:text-slate-900';
-            });
-
-            if (view === 'split') {
-                studentCol.classList.remove('hidden'); teacherCol.classList.remove('hidden');
-                pPanel.classList.add('hidden');
-                dPanel.classList.remove('lg:w-[40%]', 'xl:w-[35%]');
-                document.getElementById('btn-split').classList.add('bg-white', 'text-emerald-600', 'shadow-sm', 'font-bold');
-            } else if (view === 'teacher') {
-                studentCol.classList.add('hidden'); teacherCol.classList.remove('hidden');
-                pPanel.classList.remove('hidden');
-                dPanel.classList.add('lg:w-[40%]', 'xl:w-[35%]');
-                document.getElementById('btn-teacher').classList.add('bg-white', 'text-emerald-600', 'shadow-sm', 'font-bold');
-            } else if (view === 'student') {
-                studentCol.classList.remove('hidden'); teacherCol.classList.add('hidden');
-                document.getElementById('btn-student').classList.add('bg-white', 'text-emerald-600', 'shadow-sm', 'font-bold');
-            }
-
-            // 重新啟動輪詢（角色已更新，需要監聽不同的 topic）
-            if (ntfyTimer) { clearInterval(ntfyTimer); ntfyTimer = null; }
-            startNtfyPolling();
-
-            setTimeout(() => { window.dispatchEvent(new Event('resize')); adjustStudentGridForMode(currentMode); }, 100);
-        };
-
-        // ── 專注模式 ──────────────────────────────────────────────
-        window.toggleFocusMode = function() {
-            document.body.classList.toggle('is-focus-mode');
-            const controls = document.getElementById('focus-mode-controls');
-            if (document.body.classList.contains('is-focus-mode')) {
-                controls.classList.remove('hidden'); showToast('已進入簡報專注模式！', 'success');
             } else {
-                controls.classList.add('hidden'); showToast('已退出專注模式。', 'info');
+                cardContent = '<div class="flex-1 flex items-center justify-center h-16 text-slate-300"><span class="text-[10px] font-bold animate-pulse">等待中...</span></div>';
             }
-            setTimeout(() => { window.dispatchEvent(new Event('resize')); adjustStudentGridForMode(currentMode); }, 350);
-        };
+            grid.insertAdjacentHTML('beforeend', `
+                <div class="rounded-xl p-2.5 shadow-sm border border-slate-200 bg-white flex flex-col justify-between hover:-translate-y-0.5 transition-transform">
+                    <div class="mb-1.5 px-0.5 text-center">
+                        <span class="text-[11px] text-slate-700 font-bold truncate block">${s.name || '未知'}</span>
+                    </div>
+                    ${cardContent}
+                </div>`);
+        });
+    }
+    renderStats(stats, submitted);
+}
 
-        window.adjustStudentGridForMode = function(mode) {
-            const grid    = document.getElementById('student-grid');
-            const isFocus = document.body.classList.contains('is-focus-mode');
-            if (mode === 'drawing') grid.className = isFocus ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-3 pb-8' : 'grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-2 gap-4 pb-8';
-            else                    grid.className = isFocus ? 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 gap-2 pb-8' : 'grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 gap-3 pb-8';
-        };
+function renderStats(stats, total) {
+    const panel = document.getElementById('teacher-statistics-panel');
+    const cont  = document.getElementById('stats-chart-container');
+    if (currentMode === 'drawing' || total === 0) { panel.style.display = 'none'; return; }
+    panel.style.display = '';
+    cont.innerHTML = '';
+    const colorMap = { '✓':'bg-emerald-500','A':'bg-emerald-500','✗':'bg-rose-500','B':'bg-rose-500','C':'bg-purple-500','D':'bg-teal-500' };
+    Object.entries(stats).forEach(([key, count]) => {
+        const pct = total > 0 ? Math.round(count / total * 100) : 0;
+        const c   = colorMap[key] || 'bg-slate-400';
+        cont.insertAdjacentHTML('beforeend', `
+            <div class="flex items-center gap-2">
+                <span class="w-6 font-black text-sm text-slate-700 text-right">${key}</span>
+                <div class="flex-1 h-5 bg-slate-100 rounded-full overflow-hidden">
+                    <div class="h-full ${c} transition-all duration-500" style="width:${pct}%"></div>
+                </div>
+                <span class="w-8 text-[10px] text-slate-500 font-bold">${count}票</span>
+            </div>`);
+    });
+}
 
-        // ── 燈箱 ──────────────────────────────────────────────────
-        window.openLightbox = function(n, img) {
-            document.getElementById('lightbox-student-title').innerText = `${n} 的畫作`;
-            document.getElementById('lightbox-canvas-image').src = img;
-            document.getElementById('drawing-lightbox').classList.remove('hidden');
-            setTimeout(() => document.getElementById('drawing-lightbox').firstElementChild.classList.remove('scale-95'), 10);
-        };
-        window.closeLightbox = function() {
-            document.getElementById('drawing-lightbox').firstElementChild.classList.add('scale-95');
-            setTimeout(() => document.getElementById('drawing-lightbox').classList.add('hidden'), 150);
-        };
+// ── 視圖切換 ──────────────────────────────────────────────────
+window.switchView = function(view) {
+    currentRole = view;
+    applyView(view);
+    // 重建 SSE 連線（角色變更，需要監聽不同頻道）
+    initSSE(view);
+    setTimeout(() => { dispatchEvent(new Event('resize')); }, 100);
+};
 
-        // ── QR Code ───────────────────────────────────────────────
-        window.generateStudentQRCode = function() {
-            try {
-                const url = window.location.origin + window.location.pathname + `?room=${roomCode}&role=student`;
-                document.getElementById('qrcode-img').src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}`;
-                document.getElementById('student-url-display').value = url;
-            } catch(e) {}
-        };
-        window.openQrModal = function() {
-            document.getElementById('qr-modal').classList.remove('hidden');
-            setTimeout(() => { document.getElementById('qr-modal').classList.remove('opacity-0'); document.getElementById('qr-modal-content').classList.remove('scale-95'); }, 10);
-            window.generateStudentQRCode();
-        };
-        window.closeQrModal = function() {
-            document.getElementById('qr-modal').classList.add('opacity-0');
-            document.getElementById('qr-modal-content').classList.add('scale-95');
-            setTimeout(() => document.getElementById('qr-modal').classList.add('hidden'), 300);
-        };
-        window.copyStudentUrl = function() {
-            document.getElementById('student-url-display').select();
-            document.execCommand('copy');
-            showToast('📋 已複製專屬登入網址！', 'success');
-        };
+function applyView(view) {
+    const studentCol = document.getElementById('student-container');
+    const teacherCol = document.getElementById('teacher-container');
+    const pPanel     = document.getElementById('presentation-panel');
+    const dPanel     = document.getElementById('dashboard-panel');
 
-        // ── Toast 通知 ────────────────────────────────────────────
-        window.showToast = function(msg, type = 'info', dur = 3000) {
-            const t = document.createElement('div');
-            t.className = `p-3 rounded-lg shadow-xl border flex items-center gap-2 transition-all translate-y-2 opacity-0 max-w-sm bg-white ${type === 'success' ? 'border-emerald-200' : type === 'warning' ? 'border-amber-200' : 'border-indigo-100'}`;
-            t.innerHTML = `<span class="text-lg">${type === 'success' ? '✅' : type === 'warning' ? '⚠️' : '💡'}</span><p class="text-xs font-bold text-slate-700">${msg}</p>`;
-            document.getElementById('toast-container').appendChild(t);
-            setTimeout(() => t.classList.remove('translate-y-2', 'opacity-0'), 10);
-            setTimeout(() => { t.classList.add('opacity-0', '-translate-y-2'); setTimeout(() => t.remove(), 300); }, dur);
-        };
+    ['btn-split','btn-teacher','btn-student'].forEach(id => {
+        document.getElementById(id).className =
+            'whitespace-nowrap flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all text-slate-600 hover:text-slate-900';
+    });
 
-        // ── 簡報載入 ──────────────────────────────────────────────
-        window.loadPresentation = function() {
-            let url = document.getElementById('presentation-url').value.trim();
-            const iframe      = document.getElementById('presentation-iframe');
-            const placeholder = document.getElementById('presentation-placeholder');
-            if (!url) { window.clearPresentation(); return; }
-            if (url.includes('<iframe')) { const match = url.match(/src=["']([^"']+)["']/); if (match) url = match[1]; }
-            else if (url.includes('docs.google.com/presentation/d/') && url.includes('/edit')) url = url.replace(/\/edit.*$/, '/embed?rm=minimal');
-            else if (url.endsWith('.pptx') || url.endsWith('.ppt') || url.endsWith('.pdf') || url.endsWith('.docx') || url.endsWith('.xlsx')) url = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`;
-            else if (url.includes('drive.google.com/file/d/')) { const match = url.match(/\/d\/(.*?)\/view/); if (match && match[1]) url = `https://drive.google.com/file/d/${match[1]}/preview`; }
-            iframe.src = url; iframe.classList.remove('hidden'); placeholder.classList.add('hidden');
-            showToast('簡報載入成功！', 'success');
-        };
-        window.clearPresentation = function() {
-            document.getElementById('presentation-url').value = '';
-            document.getElementById('presentation-iframe').src = '';
-            document.getElementById('presentation-iframe').classList.add('hidden');
-            document.getElementById('presentation-placeholder').classList.remove('hidden');
-        };
-    </script>
+    if (view === 'split') {
+        studentCol.classList.remove('hidden'); teacherCol.classList.remove('hidden');
+        pPanel.classList.add('hidden');
+        dPanel.classList.remove('lg:w-[40%]','xl:w-[35%]');
+        document.getElementById('btn-split').className =
+            'whitespace-nowrap flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-bold transition-all bg-white text-emerald-600 shadow-sm';
+    } else if (view === 'teacher') {
+        studentCol.classList.add('hidden'); teacherCol.classList.remove('hidden');
+        pPanel.classList.remove('hidden');
+        dPanel.classList.add('lg:w-[40%]','xl:w-[35%]');
+        document.getElementById('btn-teacher').className =
+            'whitespace-nowrap flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-bold transition-all bg-white text-emerald-600 shadow-sm';
+    } else if (view === 'student') {
+        studentCol.classList.remove('hidden'); teacherCol.classList.add('hidden');
+        document.getElementById('btn-student').className =
+            'whitespace-nowrap flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-bold transition-all bg-white text-emerald-600 shadow-sm';
+    }
+}
+
+// ── 畫布 ──────────────────────────────────────────────────────
+function setupCanvas() {
+    function resize() {
+        const c = canvas.parentElement;
+        if (!c || !c.clientWidth) return;
+        const tmp = document.createElement('canvas');
+        tmp.width = canvas.width; tmp.height = canvas.height;
+        try { tmp.getContext('2d').drawImage(canvas, 0, 0); } catch(e) {}
+        canvas.width = c.clientWidth; canvas.height = c.clientHeight;
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        try { ctx.drawImage(tmp, 0, 0, canvas.width, canvas.height); } catch(e) {}
+    }
+    addEventListener('resize', resize);
+    resize();
+
+    const pos = e => {
+        const r = canvas.getBoundingClientRect();
+        const t = e.touches ? e.touches[0] : e;
+        return [t.clientX - r.left, t.clientY - r.top];
+    };
+    const down = e => { isDrawing = true; [lastX, lastY] = pos(e); };
+    const move = e => {
+        if (!isDrawing) return;
+        const [x, y] = pos(e);
+        ctx.beginPath(); ctx.moveTo(lastX, lastY); ctx.lineTo(x, y);
+        ctx.strokeStyle = drawTool === 'eraser' ? '#FFFFFF' : drawColor;
+        ctx.lineWidth   = drawTool === 'eraser' ? drawWidth * 2 : drawWidth;
+        ctx.stroke();
+        [lastX, lastY] = [x, y];
+        if (!drawThrottle) drawThrottle = setTimeout(() => { submitDrawing(); drawThrottle = null; }, 1000);
+    };
+    const up = () => { if (isDrawing) { isDrawing = false; submitDrawing(); } };
+
+    canvas.addEventListener('mousedown', down);
+    canvas.addEventListener('mousemove', move);
+    canvas.addEventListener('mouseup',   up);
+    canvas.addEventListener('mouseout',  up);
+    canvas.addEventListener('touchstart', e => { e.preventDefault(); down(e); }, { passive: false });
+    canvas.addEventListener('touchmove',  e => { e.preventDefault(); move(e); }, { passive: false });
+    canvas.addEventListener('touchend',   e => { e.preventDefault(); up(); });
+}
+
+function getDrawingData() {
+    const maxW = 150;
+    let w = canvas.width, h = canvas.height;
+    if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
+    const t = document.createElement('canvas');
+    t.width = w; t.height = h;
+    const tc = t.getContext('2d');
+    tc.fillStyle = '#FFFFFF'; tc.fillRect(0, 0, w, h);
+    tc.drawImage(canvas, 0, 0, w, h);
+    return t.toDataURL('image/jpeg', 0.25);
+}
+
+function submitDrawing() { if (localStudent.isLoggedIn) window.submitAnswer(getDrawingData()); }
+function clearCanvasLocal() { ctx.clearRect(0, 0, canvas.width, canvas.height); }
+
+window.clearCanvas   = () => { clearCanvasLocal(); submitDrawing(); showToast('已清空畫簿！', 'info'); };
+window.setDrawColor  = (c, btn) => { drawColor = c; drawTool = 'pen'; document.querySelectorAll('.color-btn').forEach(b => b.style.outline = ''); btn.style.outline = '3px solid #6366f1'; };
+window.setDrawTool   = t => { drawTool = t; };
+
+// ── 專注模式 ──────────────────────────────────────────────────
+window.toggleFocusMode = function() {
+    document.body.classList.toggle('is-focus-mode');
+    const on = document.body.classList.contains('is-focus-mode');
+    document.getElementById('focus-mode-controls').classList.toggle('hidden', !on);
+    showToast(on ? '已進入簡報專注模式！' : '已退出專注模式。', on ? 'success' : 'info');
+    setTimeout(() => dispatchEvent(new Event('resize')), 350);
+};
+
+// ── 燈箱 ──────────────────────────────────────────────────────
+window.openLightbox = function(name, img) {
+    document.getElementById('lightbox-title').innerText    = name + ' 的畫作';
+    document.getElementById('lightbox-img').src            = img;
+    document.getElementById('drawing-lightbox').classList.remove('hidden');
+    setTimeout(() => document.getElementById('drawing-lightbox').firstElementChild.classList.remove('scale-95'), 10);
+};
+window.closeLightbox = function() {
+    document.getElementById('drawing-lightbox').firstElementChild.classList.add('scale-95');
+    setTimeout(() => document.getElementById('drawing-lightbox').classList.add('hidden'), 150);
+};
+
+// ── QR Code ───────────────────────────────────────────────────
+function generateQRCode() {
+    try {
+        const url = location.origin + location.pathname + '?room=' + roomCode + '&role=student';
+        document.getElementById('qrcode-img').src         = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(url);
+        document.getElementById('student-url-display').value = url;
+    } catch(e) {}
+}
+window.openQrModal = function() {
+    document.getElementById('qr-modal').classList.remove('hidden');
+    setTimeout(() => {
+        document.getElementById('qr-modal').classList.remove('opacity-0');
+        document.getElementById('qr-modal-content').classList.remove('scale-95');
+    }, 10);
+    generateQRCode();
+};
+window.closeQrModal = function() {
+    document.getElementById('qr-modal').classList.add('opacity-0');
+    document.getElementById('qr-modal-content').classList.add('scale-95');
+    setTimeout(() => document.getElementById('qr-modal').classList.add('hidden'), 300);
+};
+window.copyStudentUrl = function() {
+    document.getElementById('student-url-display').select();
+    document.execCommand('copy');
+    showToast('📋 已複製專屬登入網址！', 'success');
+};
+
+// ── Toast ─────────────────────────────────────────────────────
+window.showToast = function(msg, type = 'info', dur = 3000) {
+    const t = document.createElement('div');
+    const border = type === 'success' ? 'border-emerald-200' : type === 'warning' ? 'border-amber-200' : 'border-indigo-100';
+    const icon   = type === 'success' ? '✅' : type === 'warning' ? '⚠️' : '💡';
+    t.className  = `p-3 rounded-lg shadow-xl border flex items-center gap-2 transition-all translate-y-2 opacity-0 max-w-sm bg-white ${border}`;
+    t.innerHTML  = `<span class="text-lg">${icon}</span><p class="text-xs font-bold text-slate-700">${msg}</p>`;
+    document.getElementById('toast-container').appendChild(t);
+    setTimeout(() => t.classList.remove('translate-y-2','opacity-0'), 10);
+    setTimeout(() => { t.classList.add('opacity-0','-translate-y-2'); setTimeout(() => t.remove(), 300); }, dur);
+};
+
+// ── 簡報 ──────────────────────────────────────────────────────
+window.loadPresentation = function() {
+    let url = document.getElementById('presentation-url').value.trim();
+    if (!url) { window.clearPresentation(); return; }
+    if (url.includes('<iframe')) { const m = url.match(/src=["']([^"']+)["']/); if (m) url = m[1]; }
+    else if (url.includes('docs.google.com/presentation') && url.includes('/edit')) url = url.replace(/\/edit.*$/, '/embed?rm=minimal');
+    else if (/\.(pptx?|pdf|docx?|xlsx?)$/i.test(url)) url = 'https://view.officeapps.live.com/op/embed.aspx?src=' + encodeURIComponent(url);
+    else if (url.includes('drive.google.com/file/d/')) { const m = url.match(/\/d\/(.*?)\/view/); if (m) url = 'https://drive.google.com/file/d/' + m[1] + '/preview'; }
+    document.getElementById('presentation-iframe').src = url;
+    document.getElementById('presentation-iframe').classList.remove('hidden');
+    document.getElementById('presentation-placeholder').classList.add('hidden');
+    showToast('簡報載入成功！', 'success');
+};
+window.clearPresentation = function() {
+    document.getElementById('presentation-url').value = '';
+    document.getElementById('presentation-iframe').src = '';
+    document.getElementById('presentation-iframe').classList.add('hidden');
+    document.getElementById('presentation-placeholder').classList.remove('hidden');
+};
+</script>
 </body>
 </html>
