@@ -194,7 +194,10 @@
                     <div class="bg-white p-4 border-b border-slate-200 shrink-0 shadow-sm z-10">
                         <div class="flex justify-between items-center mb-3">
                             <span class="text-sm font-bold text-slate-800">📢 發布題目類型：</span>
-                            <button onclick="clearAllResponses()" class="text-[10px] bg-rose-50 text-rose-600 px-2 py-1 rounded border border-rose-200 font-bold hover:bg-rose-100">🗑️ 清空答案</button>
+                            <div class="flex items-center gap-2">
+                                <button onclick="exportCSV()" id="btn-export-csv" class="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-1 rounded border border-emerald-200 font-bold hover:bg-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed">📥 匯出 CSV</button>
+                                <button onclick="clearAllResponses()" class="text-[10px] bg-rose-50 text-rose-600 px-2 py-1 rounded border border-rose-200 font-bold hover:bg-rose-100">🗑️ 清空答案</button>
+                            </div>
                         </div>
                         <div id="mode-grid" class="grid grid-cols-4 gap-2">
                             <button id="ctrl-mode-yes_no"  onclick="setGlobalMode('yes_no')"  class="mode-btn flex flex-col items-center justify-center py-2 px-1 rounded-lg border border-slate-200 hover:border-emerald-400 bg-slate-50 transition-all text-center"><span class="text-lg">✓/✗</span><span class="text-[10px] font-bold mt-1">剔與交叉</span></button>
@@ -590,6 +593,37 @@ window.clearAllResponses = function() {
     showToast('已清空所有答案！', 'success');
 };
 
+// ── CSV 匯出 ──────────────────────────────────────────────────
+window.exportCSV = function() {
+    const entries = Object.entries(localResponses);
+    if (entries.length === 0) return showToast('目前尚無答案可匯出！', 'warning');
+
+    const modeLabels = { yes_no: '剔與交叉', ab: 'A/B', abcd: 'ABCD 四選一', drawing: '畫簿白板' };
+    const modeLabel  = modeLabels[currentMode] || currentMode;
+
+    const rows = entries.map(([, v]) => {
+        const name   = (v.name   || '').replace(/"/g, '""');
+        const answer = v.answer && v.answer.startsWith('data:image') ? '（繪圖作答）' : (v.answer || '').replace(/"/g, '""');
+        const ts     = v.ts ? new Date(v.ts).toLocaleString('zh-Hant', { hour12: false }) : '';
+        return `"${name}","${answer}","${modeLabel}","${ts}","${roomCode}"`;
+    });
+
+    const header = '"姓名","答案","題型","作答時間","房號"';
+    const csv    = '\uFEFF' + header + '\n' + rows.join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const now  = new Date();
+    const date = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
+    const time = `${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `ClassView_${roomCode}_${date}_${time}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast(`已匯出 ${entries.length} 筆答案！`, 'success');
+};
+
 // ── 學生操作 ──────────────────────────────────────────────────
 
 window.submitAnswer = function(ans) {
@@ -756,6 +790,10 @@ function renderDashboard() {
         });
     }
     renderStats(stats, submitted);
+
+    // 根據是否有答案來啟用或停用匯出按鈕
+    const btnExport = document.getElementById('btn-export-csv');
+    if (btnExport) btnExport.disabled = (submitted === 0);
 }
 
 function renderStats(stats, total) {
