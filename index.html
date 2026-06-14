@@ -50,7 +50,7 @@
                 </div>
                 <div>
                     <h1 class="font-black text-xl text-slate-800 tracking-tight flex items-center gap-2 flex-wrap">
-                        ClassView <span class="text-emerald-500 font-medium text-xs bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">雙核穩定版</span>
+                        ClassView <span class="text-emerald-500 font-medium text-xs bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">v3 重試穩定版</span>
                         <span class="text-indigo-600 font-bold text-xs bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-200">匡智張玉瓊晨輝學校</span>
                     </h1>
                     <p class="text-xs text-slate-400">專為班級即時反饋設計的電子白板</p>
@@ -303,6 +303,13 @@
         let localResponses = {};
         let localStudent = { id: 'stu_' + Math.random().toString(36).substr(2, 6), name: '', isLoggedIn: false };
 
+        // ✅ 修正A：用 ntfy_id 集合做去重，完全不依賴 ts 比較
+        // 這解決了「裝置時鐘不同步」與「清空後 ts 衝突」的問題
+        const seenNtfyIds = new Set();
+        // ✅ 修正B：每次答案都重試發送，確保網路抖動時不丟失
+        const RETRY_COUNT = 3;
+        const RETRY_DELAY = 800; // ms
+
         const urlParams = new URLSearchParams(window.location.search);
         const isForceStudent = urlParams.get('role') === 'student';
 
@@ -410,6 +417,9 @@
                             if (!line) return;
                             try {
                                 const d   = JSON.parse(line);
+                                // ✅ 修正C：用 ntfy 訊息的唯一 id 去重，不用 ts
+                                if (seenNtfyIds.has(d.id)) return;
+                                seenNtfyIds.add(d.id);
                                 if (d.time >= lastRoomPollTime) lastRoomPollTime = d.time + 1;
                                 const msg = JSON.parse(d.message);
                                 if (msg.type === 'STATE') handleRoomStateUpdate(msg.payload);
@@ -424,6 +434,9 @@
                             if (!line) return;
                             try {
                                 const d   = JSON.parse(line);
+                                // ✅ 修正C：用 ntfy 訊息的唯一 id 去重，不用 ts
+                                if (seenNtfyIds.has(d.id)) return;
+                                seenNtfyIds.add(d.id);
                                 if (d.time >= lastResPollTime) lastResPollTime = d.time + 1;
                                 const msg = JSON.parse(d.message);
                                 if (msg.type === 'ANS')       handleIncomingAnswer(msg.payload);
@@ -435,15 +448,17 @@
             }, 2500);
         }
 
-        // ── Ntfy 發送 ─────────────────────────────────────────────
-        function ntfySend(type, payload) {
-            // 老師→學生：發到 cv_rm_（Room Messages）
-            // 學生→老師：發到 cv_rs_（Response Stream）
+        // ── Ntfy 發送（含重試機制）────────────────────────────────
+        // ✅ 修正B：重試發送，解決學校 Wi-Fi 封包丟失問題
+        function ntfySend(type, payload, retries = RETRY_COUNT) {
             const topic = (type === 'STATE' || type === 'CLEAR') ? `cv_rm_${roomCode}` : `cv_rs_${roomCode}`;
-            fetch(`https://ntfy.sh/${topic}`, {
-                method: 'POST',
-                body: JSON.stringify({ type, payload, ts: Date.now() })
-            }).catch(() => {});
+            const body  = JSON.stringify({ type, payload, ts: Date.now() });
+            const attempt = (n) => {
+                fetch(`https://ntfy.sh/${topic}`, { method: 'POST', body })
+                    .then(r => { if (!r.ok && n > 0) setTimeout(() => attempt(n - 1), RETRY_DELAY); })
+                    .catch(() => { if (n > 0) setTimeout(() => attempt(n - 1), RETRY_DELAY); });
+            };
+            attempt(retries);
         }
 
         // ── 狀態指示燈 ────────────────────────────────────────────
@@ -462,9 +477,12 @@
         }
 
         // ── 業務邏輯：接收學生答案（老師端）─────────────────────
+        // ✅ 修正A：改用 payload.msgId 做去重，不再比較 ts
+        // 這解決了「清空後學生重新作答被舊 ts 擋住」的問題
         function handleIncomingAnswer(payload) {
-            const existing = localResponses[payload.id];
-            if (existing && existing.ts >= payload.ts) return;
+            // 如果有 msgId，用它去重（Ntfy 路徑已在輪詢層去重，這裡主要處理 BroadcastChannel 重複）
+            if (payload.msgId && seenNtfyIds.has('bc_' + payload.msgId)) return;
+            if (payload.msgId) seenNtfyIds.add('bc_' + payload.msgId);
             localResponses[payload.id] = { name: payload.name, answer: payload.ans, ts: payload.ts };
             localStorage.setItem(`cyk_res_${roomCode}`, JSON.stringify(localResponses));
             if (currentRole !== 'student') renderTeacherDashboard(localResponses, currentMode);
@@ -474,6 +492,11 @@
         function executeClear() {
             localResponses = {};
             localStorage.removeItem(`cyk_res_${roomCode}`);
+            // ✅ 修正D：清空時同時清除 seenNtfyIds 中的 bc_ 前綴項目
+            // 讓學生清空後重新作答時，BroadcastChannel 不會被去重邏輯擋住
+            for (const id of [...seenNtfyIds]) {
+                if (id.startsWith('bc_')) seenNtfyIds.delete(id);
+            }
             clearCanvasLocal();
             if (currentRole !== 'student') renderTeacherDashboard({}, currentMode);
             document.querySelectorAll('.student-ans-btn').forEach(btn => {
@@ -506,13 +529,18 @@
             if (!localStudent.isLoggedIn) return showToast('請先登入！', 'warning');
             if (!ans.startsWith('data:image')) highlightSelectedAnswer(ans);
 
-            const payload = { id: localStudent.id, name: localStudent.name, ans, ts: Date.now() };
+            // ✅ 修正E：每個答案附帶唯一 msgId，用於 BroadcastChannel 去重
+            // 這解決了 split 模式下「本地寫入 + BC 觸發」雙重寫入問題
+            const msgId   = Math.random().toString(36).substr(2, 9);
+            const payload = { id: localStudent.id, name: localStudent.name, ans, ts: Date.now(), msgId };
 
             // 本地寫入（在 split 模式下讓老師端即時看到）
+            // ✅ 先標記此 msgId，防止 BroadcastChannel 回調再次觸發
+            seenNtfyIds.add('bc_' + msgId);
             handleIncomingAnswer(payload);
             // BroadcastChannel（同一瀏覽器跨分頁）
             if (bc) bc.postMessage({ type: 'ANS', payload });
-            // Ntfy（跨裝置跨網路）
+            // Ntfy（跨裝置跨網路，含重試）
             ntfySend('ANS', payload);
 
             if (!ans.startsWith('data:image')) {
