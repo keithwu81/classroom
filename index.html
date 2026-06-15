@@ -26,12 +26,20 @@
             body.is-focus-mode #presentation-panel { height: 75% !important; width: 100% !important; }
             body.is-focus-mode #dashboard-panel { height: 25% !important; width: 100% !important; }
         }
-        body.is-focus-mode #mode-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+        body.is-focus-mode #mode-grid { display: none !important; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col overflow-hidden">
 
     <div id="focus-mode-controls" class="hidden fixed top-4 right-4 z-[9999] flex items-center gap-2">
+        <select id="focus-mode-select" onchange="setGlobalMode(this.value)"
+            class="bg-white border-2 border-indigo-300 text-indigo-800 font-bold text-sm px-3 py-2 rounded-full shadow-xl outline-none cursor-pointer hover:border-indigo-500 transition-all">
+            <option value="yes_no">✓/✗ 剔與交叉</option>
+            <option value="ab">A/B 選擇</option>
+            <option value="abcd">ABCD 四選一</option>
+            <option value="drawing">🎨 畫簿白板</option>
+            <option value="text">📝 文字回答</option>
+        </select>
         <button onclick="openQrModal()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 rounded-full font-bold text-sm shadow-xl flex items-center gap-2 transition-all">📱 邀請碼</button>
         <button onclick="toggleFocusMode()" class="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2.5 rounded-full font-bold text-sm shadow-xl flex items-center gap-2 transition-all">❌ 退出專注</button>
     </div>
@@ -126,6 +134,19 @@
                         <button data-ans="C" onclick="submitAnswer('C')" class="student-ans-btn py-8 bg-purple-50 border-2 border-purple-300 rounded-2xl flex flex-col items-center shadow-sm"><span class="text-5xl font-black text-purple-700">C</span></button>
                         <button data-ans="D" onclick="submitAnswer('D')" class="student-ans-btn py-8 bg-teal-50 border-2 border-teal-300 rounded-2xl flex flex-col items-center shadow-sm"><span class="text-5xl font-black text-teal-700">D</span></button>
                     </div>
+                    <div id="mode-student-text" class="hidden w-full flex flex-col gap-4 p-2">
+                        <div class="text-center">
+                            <p class="text-sm font-bold text-slate-600 mb-3">📝 請輸入你的回答：</p>
+                            <textarea id="student-text-input" rows="5" placeholder="在此輸入你的回答..."
+                                class="w-full px-4 py-3 bg-slate-50 border-2 border-slate-200 focus:border-indigo-400 rounded-2xl outline-none font-semibold text-slate-800 resize-none text-base transition-colors"></textarea>
+                        </div>
+                        <button onclick="submitTextAnswer()" class="w-full py-4 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-black text-lg rounded-2xl shadow-lg transition-all">
+                            🚀 送出回答
+                        </button>
+                        <div id="text-submit-status" class="hidden text-center py-2 px-4 bg-emerald-50 border border-emerald-200 rounded-xl">
+                            <span class="text-emerald-600 font-bold text-sm">✅ 已送出！可修改後重新送出。</span>
+                        </div>
+                    </div>
                     <div id="mode-student-draw" class="hidden w-full flex flex-col h-full gap-3 p-2">
                         <div class="flex flex-wrap items-center justify-between gap-2 p-2 bg-slate-50 border border-slate-200 rounded-xl">
                             <div class="flex items-center gap-1.5">
@@ -199,11 +220,12 @@
                                 <button onclick="clearAllResponses()" class="text-[10px] bg-rose-50 text-rose-600 px-2 py-1 rounded border border-rose-200 font-bold hover:bg-rose-100">🗑️ 清空答案</button>
                             </div>
                         </div>
-                        <div id="mode-grid" class="grid grid-cols-4 gap-2">
+                        <div id="mode-grid" class="grid grid-cols-5 gap-2">
                             <button id="ctrl-mode-yes_no"  onclick="setGlobalMode('yes_no')"  class="mode-btn flex flex-col items-center justify-center py-2 px-1 rounded-lg border border-slate-200 hover:border-emerald-400 bg-slate-50 transition-all text-center"><span class="text-lg">✓/✗</span><span class="text-[10px] font-bold mt-1">剔與交叉</span></button>
                             <button id="ctrl-mode-ab"      onclick="setGlobalMode('ab')"      class="mode-btn flex flex-col items-center justify-center py-2 px-1 rounded-lg border border-slate-200 hover:border-emerald-400 bg-slate-50 transition-all text-center"><span class="text-lg font-black text-slate-700">A/B</span><span class="text-[10px] font-bold mt-1">A 與 B</span></button>
                             <button id="ctrl-mode-abcd"    onclick="setGlobalMode('abcd')"    class="mode-btn flex flex-col items-center justify-center py-2 px-1 rounded-lg border border-slate-200 hover:border-emerald-400 bg-slate-50 transition-all text-center"><span class="text-lg font-black text-slate-700">ABCD</span><span class="text-[10px] font-bold mt-1">四選一</span></button>
                             <button id="ctrl-mode-drawing" onclick="setGlobalMode('drawing')" class="mode-btn flex flex-col items-center justify-center py-2 px-1 rounded-lg border border-slate-200 hover:border-emerald-400 bg-slate-50 transition-all text-center"><span class="text-lg">🎨</span><span class="text-[10px] font-bold mt-1">畫簿白板</span></button>
+                            <button id="ctrl-mode-text"    onclick="setGlobalMode('text')"    class="mode-btn flex flex-col items-center justify-center py-2 px-1 rounded-lg border border-slate-200 hover:border-emerald-400 bg-slate-50 transition-all text-center"><span class="text-lg">📝</span><span class="text-[10px] font-bold mt-1">文字回答</span></button>
                         </div>
                     </div>
 
@@ -598,12 +620,12 @@ window.exportCSV = function() {
     const entries = Object.entries(localResponses);
     if (entries.length === 0) return showToast('目前尚無答案可匯出！', 'warning');
 
-    const modeLabels = { yes_no: '剔與交叉', ab: 'A/B', abcd: 'ABCD 四選一', drawing: '畫簿白板' };
+    const modeLabels = { yes_no: '剔與交叉', ab: 'A/B', abcd: 'ABCD 四選一', drawing: '畫簿白板', text: '文字回答' };
     const modeLabel  = modeLabels[currentMode] || currentMode;
 
     const rows = entries.map(([, v]) => {
         const name   = (v.name   || '').replace(/"/g, '""');
-        const answer = v.answer && v.answer.startsWith('data:image') ? '（繪圖作答）' : (v.answer || '').replace(/"/g, '""');
+        const answer = v.answer && v.answer.startsWith('data:image') ? '（繪圖作答）' : (v.answer || '').replace(/"/g, '""').replace(/\n/g, ' ');
         const ts     = v.ts ? new Date(v.ts).toLocaleString('zh-Hant', { hour12: false }) : '';
         return `"${name}","${answer}","${modeLabel}","${ts}","${roomCode}"`;
     });
@@ -626,9 +648,20 @@ window.exportCSV = function() {
 
 // ── 學生操作 ──────────────────────────────────────────────────
 
+// 文字回答送出
+window.submitTextAnswer = function() {
+    const input = document.getElementById('student-text-input');
+    const text  = (input ? input.value : '').trim();
+    if (!text) return showToast('請先輸入回答內容！', 'warning');
+    window.submitAnswer(text);
+    const status = document.getElementById('text-submit-status');
+    if (status) status.classList.remove('hidden');
+    showToast('✅ 文字回答已送出！', 'success');
+};
+
 window.submitAnswer = function(ans) {
     if (!localStudent.isLoggedIn) return showToast('請先登入！', 'warning');
-    if (!ans.startsWith('data:image')) highlightAnswer(ans);
+    if (!ans.startsWith('data:image') && currentMode !== 'text') highlightAnswer(ans);
 
     const payload = {
         id:   localStudent.id,
@@ -692,15 +725,24 @@ function updateStudentModeUI(mode) {
         yes_no:  '✓ / ✗ 剔和交叉',
         ab:      'A 和 B',
         abcd:    'A, B, C, D 選擇題',
-        drawing: '畫簿白板模式'
+        drawing: '畫簿白板模式',
+        text:    '📝 文字回答模式'
     };
     const el = document.getElementById('student-current-mode-txt');
     if (el) el.innerText = modeNames[mode] || '等待中';
 
-    ['mode-waiting','mode-student-yesno','mode-student-ab','mode-student-abcd','mode-student-draw']
+    ['mode-waiting','mode-student-yesno','mode-student-ab','mode-student-abcd','mode-student-draw','mode-student-text']
         .forEach(id => document.getElementById(id).classList.add('hidden'));
 
-    const map = { yes_no:'mode-student-yesno', ab:'mode-student-ab', abcd:'mode-student-abcd', drawing:'mode-student-draw' };
+    // 切換文字模式時清空輸入框與狀態提示
+    if (mode !== 'text') {
+        const ti = document.getElementById('student-text-input');
+        if (ti) ti.value = '';
+        const ts = document.getElementById('text-submit-status');
+        if (ts) ts.classList.add('hidden');
+    }
+
+    const map = { yes_no:'mode-student-yesno', ab:'mode-student-ab', abcd:'mode-student-abcd', drawing:'mode-student-draw', text:'mode-student-text' };
     if (map[mode]) {
         document.getElementById(map[mode]).classList.remove('hidden');
         if (mode === 'drawing') setTimeout(() => dispatchEvent(new Event('resize')), 100);
@@ -715,6 +757,9 @@ function updateTeacherModeButtons(mode) {
     });
     const active = document.getElementById('ctrl-mode-' + mode);
     if (active) active.className = 'mode-btn flex flex-col items-center justify-center py-2 px-1 rounded-lg border-2 border-emerald-500 bg-emerald-50 shadow-md text-emerald-800 scale-105 transition-all text-center font-bold';
+    // 同步專注模式下拉選單
+    const sel = document.getElementById('focus-mode-select');
+    if (sel) sel.value = mode;
 }
 
 function updateStatus(text, colorClass) {
@@ -746,6 +791,7 @@ function renderDashboard() {
     if      (currentMode === 'yes_no') stats = { '✓': 0, '✗': 0 };
     else if (currentMode === 'ab')     stats = { 'A': 0, 'B': 0 };
     else if (currentMode === 'abcd')   stats = { 'A': 0, 'B': 0, 'C': 0, 'D': 0 };
+    else if (currentMode === 'text')   stats = null; // 文字模式不顯示統計
 
     if (list.length === 0) {
         grid.innerHTML = '<div class="col-span-full py-8 text-center text-slate-400 bg-white rounded-xl border border-slate-100 shadow-inner"><p>目前尚無學生回答</p></div>';
@@ -753,7 +799,13 @@ function renderDashboard() {
         list.forEach(s => {
             let cardContent = '';
             if (s.answer) {
-                if (currentMode === 'drawing') {
+                if (currentMode === 'text') {
+                    // 文字回答卡片
+                    const escaped = s.answer.replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+                    cardContent = `<div class="flex-1 flex items-start justify-center w-full pt-1 pb-2">
+                        <p class="text-xs text-slate-700 font-semibold leading-relaxed text-left w-full px-1 break-words line-clamp-4" title="${escaped}">${escaped}</p>
+                    </div>`;
+                } else if (currentMode === 'drawing') {
                     cardContent = `
                         <div class="w-full aspect-[4/3] bg-white border border-slate-200 rounded-lg overflow-hidden relative group/c cursor-pointer shadow-inner"
                              onclick="openLightbox('${s.name}','${s.answer}')">
@@ -799,7 +851,7 @@ function renderDashboard() {
 function renderStats(stats, total) {
     const panel = document.getElementById('teacher-statistics-panel');
     const cont  = document.getElementById('stats-chart-container');
-    if (currentMode === 'drawing' || total === 0) { panel.style.display = 'none'; return; }
+    if (currentMode === 'drawing' || currentMode === 'text' || total === 0 || stats === null) { panel.style.display = 'none'; return; }
     panel.style.display = '';
     cont.innerHTML = '';
     const colorMap = { '✓':'bg-emerald-500','A':'bg-emerald-500','✗':'bg-rose-500','B':'bg-rose-500','C':'bg-purple-500','D':'bg-teal-500' };
