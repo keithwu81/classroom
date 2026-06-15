@@ -381,7 +381,8 @@ function initRoomCode() {
 // ── 本地狀態恢復 ──────────────────────────────────────────────
 function restoreLocalState() {
     try {
-        const s = JSON.parse(localStorage.getItem('cyk_student'));
+        // 使用房號區分學生登入狀態，避免掃描新 QR Code 後跨房間跳過登入畫面
+        const s = JSON.parse(localStorage.getItem('cyk_student_' + roomCode));
         if (s && s.isLoggedIn) { localStudent = s; showStudentWorkspace(); }
     } catch(e) {}
     try {
@@ -695,7 +696,7 @@ window.loginStudent = function() {
     if (!name) return showToast('請輸入姓名！', 'warning');
     localStudent.name      = name;
     localStudent.isLoggedIn = true;
-    localStorage.setItem('cyk_student', JSON.stringify(localStudent));
+    localStorage.setItem('cyk_student_' + roomCode, JSON.stringify(localStudent));
     showStudentWorkspace();
     showToast('歡迎 ' + name + '！', 'success');
     // 登入後請求目前題型
@@ -712,7 +713,7 @@ function showStudentWorkspace() {
 
 window.logoutStudent = function() {
     localStudent.isLoggedIn = false;
-    localStorage.removeItem('cyk_student');
+    localStorage.removeItem('cyk_student_' + roomCode);
     document.getElementById('student-login-box').classList.remove('hidden');
     document.getElementById('student-workspace').classList.add('hidden');
     document.getElementById('student-badge').classList.add('hidden');
