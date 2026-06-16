@@ -37,6 +37,9 @@
             <option value="yes_no">✓/✗ 剔與交叉</option>
             <option value="ab">A/B 選擇</option>
             <option value="abcd">ABCD 四選一</option>
+            <option value="custom2">✏️ 二選一（自訂）</option>
+            <option value="color2">🟥🟦 二選一（顏色）</option>
+            <option value="color4">🟥🟨🟩🟦 四選一（顏色）</option>
             <option value="drawing">🎨 畫簿白板</option>
             <option value="text">📝 文字回答</option>
         </select>
@@ -134,6 +137,20 @@
                         <button data-ans="C" onclick="submitAnswer('C')" class="student-ans-btn py-8 bg-purple-50 border-2 border-purple-300 rounded-2xl flex flex-col items-center shadow-sm"><span class="text-5xl font-black text-purple-700">C</span></button>
                         <button data-ans="D" onclick="submitAnswer('D')" class="student-ans-btn py-8 bg-teal-50 border-2 border-teal-300 rounded-2xl flex flex-col items-center shadow-sm"><span class="text-5xl font-black text-teal-700">D</span></button>
                     </div>
+                    <div id="mode-student-custom2" class="hidden w-full max-w-md grid grid-cols-2 gap-6 p-4">
+                        <button data-ans="c1" onclick="submitAnswer('c1')" class="student-ans-btn py-14 bg-amber-50 border-2 border-amber-300 rounded-3xl flex flex-col items-center justify-center gap-2 shadow-lg"><span id="student-custom2-label-1" class="font-black text-2xl text-amber-800">選項 1</span></button>
+                        <button data-ans="c2" onclick="submitAnswer('c2')" class="student-ans-btn py-14 bg-amber-50 border-2 border-amber-300 rounded-3xl flex flex-col items-center justify-center gap-2 shadow-lg"><span id="student-custom2-label-2" class="font-black text-2xl text-amber-800">選項 2</span></button>
+                    </div>
+                    <div id="mode-student-color2" class="hidden w-full max-w-md grid grid-cols-2 gap-6 p-4">
+                        <button data-ans="red" onclick="submitAnswer('red')" class="student-ans-btn py-12 bg-rose-100 border-2 border-rose-300 rounded-3xl flex flex-col items-center justify-center gap-3 shadow-lg"><span class="w-16 h-16 rounded-full bg-rose-500 border-4 border-white shadow-md"></span><span class="font-black text-lg text-rose-800">紅色</span></button>
+                        <button data-ans="blue" onclick="submitAnswer('blue')" class="student-ans-btn py-12 bg-blue-100 border-2 border-blue-300 rounded-3xl flex flex-col items-center justify-center gap-3 shadow-lg"><span class="w-16 h-16 rounded-full bg-blue-500 border-4 border-white shadow-md"></span><span class="font-black text-lg text-blue-800">藍色</span></button>
+                    </div>
+                    <div id="mode-student-color4" class="hidden w-full max-w-md grid grid-cols-2 gap-4 p-4">
+                        <button data-ans="red"    onclick="submitAnswer('red')"    class="student-ans-btn py-8 bg-rose-50 border-2 border-rose-300 rounded-2xl flex flex-col items-center gap-2 shadow-sm"><span class="w-12 h-12 rounded-full bg-rose-500 border-4 border-white shadow"></span><span class="text-sm font-black text-rose-800">紅色</span></button>
+                        <button data-ans="yellow" onclick="submitAnswer('yellow')" class="student-ans-btn py-8 bg-yellow-50 border-2 border-yellow-300 rounded-2xl flex flex-col items-center gap-2 shadow-sm"><span class="w-12 h-12 rounded-full bg-yellow-400 border-4 border-white shadow"></span><span class="text-sm font-black text-yellow-800">黃色</span></button>
+                        <button data-ans="green"  onclick="submitAnswer('green')"  class="student-ans-btn py-8 bg-emerald-50 border-2 border-emerald-300 rounded-2xl flex flex-col items-center gap-2 shadow-sm"><span class="w-12 h-12 rounded-full bg-emerald-500 border-4 border-white shadow"></span><span class="text-sm font-black text-emerald-800">綠色</span></button>
+                        <button data-ans="blue"   onclick="submitAnswer('blue')"   class="student-ans-btn py-8 bg-blue-50 border-2 border-blue-300 rounded-2xl flex flex-col items-center gap-2 shadow-sm"><span class="w-12 h-12 rounded-full bg-blue-500 border-4 border-white shadow"></span><span class="text-sm font-black text-blue-800">藍色</span></button>
+                    </div>
                     <div id="mode-student-text" class="hidden w-full flex flex-col gap-4 p-2">
                         <div class="text-center">
                             <p class="text-sm font-bold text-slate-600 mb-3">📝 請輸入你的回答：</p>
@@ -220,12 +237,28 @@
                                 <button onclick="clearAllResponses()" class="text-[10px] bg-rose-50 text-rose-600 px-2 py-1 rounded border border-rose-200 font-bold hover:bg-rose-100">🗑️ 清空答案</button>
                             </div>
                         </div>
-                        <div id="mode-grid" class="grid grid-cols-5 gap-2">
-                            <button id="ctrl-mode-yes_no"  onclick="setGlobalMode('yes_no')"  class="mode-btn flex flex-col items-center justify-center py-2 px-1 rounded-lg border border-slate-200 hover:border-emerald-400 bg-slate-50 transition-all text-center"><span class="text-lg">✓/✗</span><span class="text-[10px] font-bold mt-1">剔與交叉</span></button>
-                            <button id="ctrl-mode-ab"      onclick="setGlobalMode('ab')"      class="mode-btn flex flex-col items-center justify-center py-2 px-1 rounded-lg border border-slate-200 hover:border-emerald-400 bg-slate-50 transition-all text-center"><span class="text-lg font-black text-slate-700">A/B</span><span class="text-[10px] font-bold mt-1">A 與 B</span></button>
-                            <button id="ctrl-mode-abcd"    onclick="setGlobalMode('abcd')"    class="mode-btn flex flex-col items-center justify-center py-2 px-1 rounded-lg border border-slate-200 hover:border-emerald-400 bg-slate-50 transition-all text-center"><span class="text-lg font-black text-slate-700">ABCD</span><span class="text-[10px] font-bold mt-1">四選一</span></button>
-                            <button id="ctrl-mode-drawing" onclick="setGlobalMode('drawing')" class="mode-btn flex flex-col items-center justify-center py-2 px-1 rounded-lg border border-slate-200 hover:border-emerald-400 bg-slate-50 transition-all text-center"><span class="text-lg">🎨</span><span class="text-[10px] font-bold mt-1">畫簿白板</span></button>
-                            <button id="ctrl-mode-text"    onclick="setGlobalMode('text')"    class="mode-btn flex flex-col items-center justify-center py-2 px-1 rounded-lg border border-slate-200 hover:border-emerald-400 bg-slate-50 transition-all text-center"><span class="text-lg">📝</span><span class="text-[10px] font-bold mt-1">文字回答</span></button>
+                        <div id="mode-grid">
+                            <select id="mode-select" onchange="setGlobalMode(this.value)"
+                                class="w-full px-3 py-2.5 bg-white border-2 border-slate-200 hover:border-emerald-400 focus:border-emerald-500 rounded-lg text-sm font-bold text-slate-700 outline-none cursor-pointer transition-all shadow-sm">
+                                <option value="yes_no">✓ / ✗　剔與交叉</option>
+                                <option value="ab">A / B　A 與 B 二選一</option>
+                                <option value="abcd">A / B / C / D　四選一</option>
+                                <option value="custom2">✏️　二選一（自訂名稱）</option>
+                                <option value="color2">🟥🟦　二選一（顏色選擇）</option>
+                                <option value="color4">🟥🟨🟩🟦　四選一（顏色選擇）</option>
+                                <option value="drawing">🎨　畫簿白板</option>
+                                <option value="text">📝　文字回答</option>
+                            </select>
+                        </div>
+                        <div id="custom2-panel" class="hidden mt-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+                            <p class="text-[10px] font-bold text-amber-700 mb-1.5">✏️ 自訂選項名稱（切換題型時自動發佈）</p>
+                            <div class="flex items-center gap-1.5">
+                                <input type="text" id="custom2-opt1" maxlength="8" placeholder="選項 1" oninput="onCustom2Input()"
+                                    class="flex-1 min-w-0 px-2 py-1.5 text-xs bg-white border border-amber-200 rounded-md outline-none focus:border-amber-500 text-center font-bold">
+                                <span class="text-amber-500 font-black text-xs">VS</span>
+                                <input type="text" id="custom2-opt2" maxlength="8" placeholder="選項 2" oninput="onCustom2Input()"
+                                    class="flex-1 min-w-0 px-2 py-1.5 text-xs bg-white border border-amber-200 rounded-md outline-none focus:border-amber-500 text-center font-bold">
+                            </div>
                         </div>
                     </div>
 
@@ -317,6 +350,7 @@ let roomCode    = '';
 let currentMode = 'yes_no';
 let currentRole = 'split';
 let localResponses = {};
+let custom2Labels = { c1: '選項 1', c2: '選項 2' }; // 老師可自訂的 2 選 1 名稱
 let localStudent = {
     id: 'stu_' + Math.random().toString(36).substr(2, 8),
     name: '',
@@ -431,7 +465,7 @@ function connectSSE_Teacher() {
         updateStatus('🟢 已連線（即時推送）', 'bg-emerald-500');
         document.getElementById('student-conn-status').innerText = '即時連線中';
         // ★ 老師連線後廣播 TEACHER_READY，讓學生知道可以重送答案
-        ntfySend('TEACHER_READY', { mode: currentMode });
+        ntfySend('TEACHER_READY', { mode: currentMode, labels: { ...custom2Labels } });
     };
 
     sseTeacher.onmessage = (e) => {
@@ -492,12 +526,12 @@ function connectSSE_Student() {
             }
 
             if (msg.type === 'STATE') {
-                applyModeChange(msg.payload.mode);
+                applyModeChange(msg.payload.mode, msg.payload);
             } else if (msg.type === 'CLEAR') {
                 executeClear(false); // false = 不廣播（避免迴圈）
             } else if (msg.type === 'TEACHER_READY') {
                 // ★ 老師重新連線了，更新題型並重送未確認的答案
-                applyModeChange(msg.payload.mode);
+                applyModeChange(msg.payload.mode, msg.payload);
                 if (localStudent.isLoggedIn && localStudent._pendingAns) {
                     // 重送上一個未確認的答案
                     ntfySend('ANS', localStudent._pendingAns);
@@ -519,9 +553,9 @@ function handleBCMessage(data) {
         seenMsgIds.add('bc_' + msgId);
     }
     if (type === 'ANS'   && currentRole !== 'student') writeAnswer(payload);
-    if (type === 'STATE' && currentRole === 'student')  applyModeChange(payload.mode);
+    if (type === 'STATE' && currentRole === 'student')  applyModeChange(payload.mode, payload);
     if (type === 'CLEAR') executeClear(false);
-    if (type === 'TEACHER_READY' && currentRole === 'student') applyModeChange(payload.mode);
+    if (type === 'TEACHER_READY' && currentRole === 'student') applyModeChange(payload.mode, payload);
 }
 
 // ── Ntfy 發送 ─────────────────────────────────────────────────
@@ -565,9 +599,18 @@ function writeAnswer(payload) {
     if (currentRole !== 'student') renderDashboard();
 }
 
-// 套用題型變更（學生端）
-function applyModeChange(mode) {
-    if (!mode || currentMode === mode) return;
+// 套用題型變更（學生端 / 通用）
+function applyModeChange(mode, payload) {
+    if (!mode) return;
+    if (mode === 'custom2' && payload && payload.labels) {
+        custom2Labels.c1 = payload.labels.c1 || '選項 1';
+        custom2Labels.c2 = payload.labels.c2 || '選項 2';
+        // 老師端同步 input 框
+        const i1 = document.getElementById('custom2-opt1');
+        const i2 = document.getElementById('custom2-opt2');
+        if (i1) i1.value = custom2Labels.c1;
+        if (i2) i2.value = custom2Labels.c2;
+    }
     currentMode = mode;
     updateStudentModeUI(mode);
     updateTeacherModeButtons(mode);
@@ -597,18 +640,33 @@ function executeClear(broadcast = true) {
 // ── 老師操作 ──────────────────────────────────────────────────
 
 window.setGlobalMode = function(mode) {
-    currentMode = mode;
-    updateStudentModeUI(mode);
-    updateTeacherModeButtons(mode);
+    // custom2 模式時把當前 input 內容存到 labels
+    if (mode === 'custom2') {
+        const i1 = document.getElementById('custom2-opt1');
+        const i2 = document.getElementById('custom2-opt2');
+        custom2Labels.c1 = (i1 && i1.value.trim()) || '選項 1';
+        custom2Labels.c2 = (i2 && i2.value.trim()) || '選項 2';
+    }
+    applyModeChange(mode, { labels: { ...custom2Labels } });
     executeClear(false); // 先清空，不廣播 CLEAR
 
     const msgId = Math.random().toString(36).substr(2, 10);
-    const payload = { mode };
+    const payload = { mode, labels: { ...custom2Labels } };
     // BroadcastChannel 廣播
     if (bcChannel) bcChannel.postMessage({ type: 'STATE', payload, msgId });
     // Ntfy 推送給所有學生
     ntfySend('STATE', payload);
     showToast('已切換題型：' + mode, 'success');
+};
+
+// custom2 標籤輸入即時更新（不廣播，只本地預覽；切換/送出才廣播）
+window.onCustom2Input = function() {
+    const i1 = document.getElementById('custom2-opt1');
+    const i2 = document.getElementById('custom2-opt2');
+    if (i1) custom2Labels.c1 = i1.value.trim() || '選項 1';
+    if (i2) custom2Labels.c2 = i2.value.trim() || '選項 2';
+    // 學生端若已在 custom2 介面，按鈕即時更新
+    if (currentMode === 'custom2') updateStudentModeUI('custom2');
 };
 
 window.clearAllResponses = function() {
@@ -621,12 +679,15 @@ window.exportCSV = function() {
     const entries = Object.entries(localResponses);
     if (entries.length === 0) return showToast('目前尚無答案可匯出！', 'warning');
 
-    const modeLabels = { yes_no: '剔與交叉', ab: 'A/B', abcd: 'ABCD 四選一', drawing: '畫簿白板', text: '文字回答' };
+    const modeLabels = { yes_no: '剔與交叉', ab: 'A/B', abcd: 'ABCD 四選一', custom2: '二選一（自訂）', color2: '二選一（顏色）', color4: '四選一（顏色）', drawing: '畫簿白板', text: '文字回答' };
+    const colorLabel = { red: '紅色', blue: '藍色', yellow: '黃色', green: '綠色' };
     const modeLabel  = modeLabels[currentMode] || currentMode;
 
     const rows = entries.map(([, v]) => {
         const name   = (v.name   || '').replace(/"/g, '""');
-        const answer = v.answer && v.answer.startsWith('data:image') ? '（繪圖作答）' : (v.answer || '').replace(/"/g, '""').replace(/\n/g, ' ');
+        let answer   = v.answer && v.answer.startsWith('data:image') ? '（繪圖作答）' : (v.answer || '').replace(/"/g, '""').replace(/\n/g, ' ');
+        if ((currentMode === 'color2' || currentMode === 'color4') && colorLabel[answer]) answer = colorLabel[answer];
+        if (currentMode === 'custom2' && (answer === 'c1' || answer === 'c2')) answer = answer === 'c1' ? custom2Labels.c1 : custom2Labels.c2;
         const ts     = v.ts ? new Date(v.ts).toLocaleString('zh-Hant', { hour12: false }) : '';
         return `"${name}","${answer}","${modeLabel}","${ts}","${roomCode}"`;
     });
@@ -726,13 +787,22 @@ function updateStudentModeUI(mode) {
         yes_no:  '✓ / ✗ 剔和交叉',
         ab:      'A 和 B',
         abcd:    'A, B, C, D 選擇題',
+        custom2: `✏️ ${custom2Labels.c1} vs ${custom2Labels.c2}`,
+        color2:  '🟥🟦 二選一（顏色）',
+        color4:  '🟥🟨🟩🟦 四選一（顏色）',
         drawing: '畫簿白板模式',
         text:    '📝 文字回答模式'
     };
     const el = document.getElementById('student-current-mode-txt');
     if (el) el.innerText = modeNames[mode] || '等待中';
 
-    ['mode-waiting','mode-student-yesno','mode-student-ab','mode-student-abcd','mode-student-draw','mode-student-text']
+    // 同步 custom2 按鈕文字
+    const l1 = document.getElementById('student-custom2-label-1');
+    const l2 = document.getElementById('student-custom2-label-2');
+    if (l1) l1.innerText = custom2Labels.c1 || '選項 1';
+    if (l2) l2.innerText = custom2Labels.c2 || '選項 2';
+
+    ['mode-waiting','mode-student-yesno','mode-student-ab','mode-student-abcd','mode-student-custom2','mode-student-color2','mode-student-color4','mode-student-draw','mode-student-text']
         .forEach(id => document.getElementById(id).classList.add('hidden'));
 
     // 切換文字模式時清空輸入框與狀態提示
@@ -743,7 +813,7 @@ function updateStudentModeUI(mode) {
         if (ts) ts.classList.add('hidden');
     }
 
-    const map = { yes_no:'mode-student-yesno', ab:'mode-student-ab', abcd:'mode-student-abcd', drawing:'mode-student-draw', text:'mode-student-text' };
+    const map = { yes_no:'mode-student-yesno', ab:'mode-student-ab', abcd:'mode-student-abcd', custom2:'mode-student-custom2', color2:'mode-student-color2', color4:'mode-student-color4', drawing:'mode-student-draw', text:'mode-student-text' };
     if (map[mode]) {
         document.getElementById(map[mode]).classList.remove('hidden');
         if (mode === 'drawing') setTimeout(() => dispatchEvent(new Event('resize')), 100);
@@ -753,14 +823,15 @@ function updateStudentModeUI(mode) {
 }
 
 function updateTeacherModeButtons(mode) {
-    document.querySelectorAll('.mode-btn').forEach(btn => {
-        btn.className = 'mode-btn flex flex-col items-center justify-center py-2 px-1 rounded-lg border border-slate-200 hover:border-emerald-400 bg-slate-50 transition-all text-center';
-    });
-    const active = document.getElementById('ctrl-mode-' + mode);
-    if (active) active.className = 'mode-btn flex flex-col items-center justify-center py-2 px-1 rounded-lg border-2 border-emerald-500 bg-emerald-50 shadow-md text-emerald-800 scale-105 transition-all text-center font-bold';
-    // 同步專注模式下拉選單
-    const sel = document.getElementById('focus-mode-select');
+    // 同步主控台下拉選單
+    const sel = document.getElementById('mode-select');
     if (sel) sel.value = mode;
+    // 同步專注模式下拉選單
+    const fsel = document.getElementById('focus-mode-select');
+    if (fsel) fsel.value = mode;
+    // custom2 才顯示自訂名稱輸入區
+    const c2p = document.getElementById('custom2-panel');
+    if (c2p) c2p.classList.toggle('hidden', mode !== 'custom2');
 }
 
 function updateStatus(text, colorClass) {
@@ -792,6 +863,9 @@ function renderDashboard() {
     if      (currentMode === 'yes_no') stats = { '✓': 0, '✗': 0 };
     else if (currentMode === 'ab')     stats = { 'A': 0, 'B': 0 };
     else if (currentMode === 'abcd')   stats = { 'A': 0, 'B': 0, 'C': 0, 'D': 0 };
+    else if (currentMode === 'custom2') stats = { 'c1': 0, 'c2': 0 };
+    else if (currentMode === 'color2') stats = { 'red': 0, 'blue': 0 };
+    else if (currentMode === 'color4') stats = { 'red': 0, 'yellow': 0, 'green': 0, 'blue': 0 };
     else if (currentMode === 'text')   stats = null; // 文字模式不顯示統計
 
     if (list.length === 0) {
@@ -817,18 +891,37 @@ function renderDashboard() {
                         </div>`;
                 } else {
                     if (stats[s.answer] !== undefined) stats[s.answer]++;
-                    const colorMap = {
-                        '✓': 'bg-emerald-50 text-emerald-600 border-emerald-300',
-                        'A':  'bg-emerald-50 text-emerald-600 border-emerald-300',
-                        '✗': 'bg-rose-50 text-rose-600 border-rose-300',
-                        'B':  'bg-rose-50 text-rose-600 border-rose-300',
-                        'C':  'bg-purple-50 text-purple-600 border-purple-300',
-                        'D':  'bg-teal-50 text-teal-600 border-teal-300'
-                    };
-                    const c = colorMap[s.answer] || 'bg-slate-100 text-slate-800 border-slate-200';
-                    cardContent = `<div class="flex-1 flex items-center justify-center h-16 w-full">
-                        <span class="text-3xl font-black ${c} border-2 w-14 h-14 rounded-2xl flex items-center justify-center hover:scale-110 transition-transform shadow-md">${s.answer}</span>
-                    </div>`;
+                    // custom2 顯示自訂選項名稱
+                    if (currentMode === 'custom2') {
+                        const lbl = s.answer === 'c1' ? custom2Labels.c1 : (s.answer === 'c2' ? custom2Labels.c2 : s.answer);
+                        cardContent = `<div class="flex-1 flex items-center justify-center h-16 w-full">
+                            <span class="text-base font-black bg-amber-50 text-amber-700 border-2 border-amber-300 px-3 py-2 rounded-2xl flex items-center justify-center hover:scale-110 transition-transform shadow-md break-all">${lbl.replace(/</g,'&lt;')}</span>
+                        </div>`;
+                    } else if (currentMode === 'color2' || currentMode === 'color4') {
+                        const colorSwatch = {
+                            'red':    { bg: 'bg-rose-500',    label: '紅色' },
+                            'blue':   { bg: 'bg-blue-500',    label: '藍色' },
+                            'yellow': { bg: 'bg-yellow-400',  label: '黃色' },
+                            'green':  { bg: 'bg-emerald-500', label: '綠色' }
+                        };
+                        const sw = colorSwatch[s.answer] || { bg: 'bg-slate-300', label: s.answer };
+                        cardContent = `<div class="flex-1 flex items-center justify-center h-16 w-full">
+                            <span class="${sw.bg} w-14 h-14 rounded-full border-4 border-white shadow-md flex items-center justify-center hover:scale-110 transition-transform" title="${sw.label}"></span>
+                        </div>`;
+                    } else {
+                        const colorMap = {
+                            '✓': 'bg-emerald-50 text-emerald-600 border-emerald-300',
+                            'A':  'bg-emerald-50 text-emerald-600 border-emerald-300',
+                            '✗': 'bg-rose-50 text-rose-600 border-rose-300',
+                            'B':  'bg-rose-50 text-rose-600 border-rose-300',
+                            'C':  'bg-purple-50 text-purple-600 border-purple-300',
+                            'D':  'bg-teal-50 text-teal-600 border-teal-300'
+                        };
+                        const c = colorMap[s.answer] || 'bg-slate-100 text-slate-800 border-slate-200';
+                        cardContent = `<div class="flex-1 flex items-center justify-center h-16 w-full">
+                            <span class="text-3xl font-black ${c} border-2 w-14 h-14 rounded-2xl flex items-center justify-center hover:scale-110 transition-transform shadow-md">${s.answer}</span>
+                        </div>`;
+                    }
                 }
             } else {
                 cardContent = '<div class="flex-1 flex items-center justify-center h-16 text-slate-300"><span class="text-[10px] font-bold animate-pulse">等待中...</span></div>';
@@ -856,12 +949,18 @@ function renderStats(stats, total) {
     panel.style.display = '';
     cont.innerHTML = '';
     const colorMap = { '✓':'bg-emerald-500','A':'bg-emerald-500','✗':'bg-rose-500','B':'bg-rose-500','C':'bg-purple-500','D':'bg-teal-500' };
+    const colorLabel = { 'red':'紅色','blue':'藍色','yellow':'黃色','green':'綠色' };
+    const isColor = (currentMode === 'color2' || currentMode === 'color4');
+    const isCustom2 = (currentMode === 'custom2');
+    const custom2Display = (k) => k === 'c1' ? custom2Labels.c1 : (k === 'c2' ? custom2Labels.c2 : k);
     Object.entries(stats).forEach(([key, count]) => {
         const pct = total > 0 ? Math.round(count / total * 100) : 0;
-        const c   = colorMap[key] || 'bg-slate-400';
+        const c   = colorMap[key] || (isCustom2 ? 'bg-amber-500' : 'bg-slate-400');
+        const label = isColor ? (colorLabel[key] || key) : (isCustom2 ? custom2Display(key) : key);
+        const swatch = isColor ? `<span class="inline-block w-3 h-3 rounded-full ${c === 'bg-slate-400' ? 'bg-slate-400' : (key==='red'?'bg-rose-500':key==='blue'?'bg-blue-500':key==='yellow'?'bg-yellow-400':'bg-emerald-500')} align-middle mr-1"></span>` : '';
         cont.insertAdjacentHTML('beforeend', `
             <div class="flex items-center gap-2">
-                <span class="w-6 font-black text-sm text-slate-700 text-right">${key}</span>
+                <span class="w-10 text-xs font-bold text-slate-700 text-right">${swatch}${label}</span>
                 <div class="flex-1 h-5 bg-slate-100 rounded-full overflow-hidden">
                     <div class="h-full ${c} transition-all duration-500" style="width:${pct}%"></div>
                 </div>
