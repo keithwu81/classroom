@@ -536,6 +536,8 @@ function connectSSE_Student() {
                     // 重送上一個未確認的答案
                     ntfySend('ANS', localStudent._pendingAns);
                 }
+            } else if (msg.type === 'CUSTOM2_LABELS') {
+                applyModeChange('custom2', msg.payload);
             }
         } catch(e2) {}
     };
@@ -556,6 +558,7 @@ function handleBCMessage(data) {
     if (type === 'STATE' && currentRole === 'student')  applyModeChange(payload.mode, payload);
     if (type === 'CLEAR') executeClear(false);
     if (type === 'TEACHER_READY' && currentRole === 'student') applyModeChange(payload.mode, payload);
+    if (type === 'CUSTOM2_LABELS') applyModeChange('custom2', payload);
 }
 
 // ── Ntfy 發送 ─────────────────────────────────────────────────
@@ -563,7 +566,7 @@ function ntfySend(type, payload) {
     // 老師→學生：cv_rm_（Room Messages）
     // 學生→老師：cv_rs_（Response Stream）
     // REQ_STATE 是學生發給老師，所以走 cv_rs_
-    const isToStudents = (type === 'STATE' || type === 'CLEAR');
+    const isToStudents = (type === 'STATE' || type === 'CLEAR' || type === 'CUSTOM2_LABELS');
     const topic  = isToStudents ? `cv_rm_${roomCode}` : `cv_rs_${roomCode}`;
     const msgId  = Math.random().toString(36).substr(2, 10);
     const body   = JSON.stringify({ type, payload, msgId });
@@ -605,11 +608,11 @@ function applyModeChange(mode, payload) {
     if (mode === 'custom2' && payload && payload.labels) {
         custom2Labels.c1 = payload.labels.c1 || '選項 1';
         custom2Labels.c2 = payload.labels.c2 || '選項 2';
-        // 老師端同步 input 框
+        // 老師端同步 input 框（正在 focus 的 input 不覆蓋，避免打字卡頓）
         const i1 = document.getElementById('custom2-opt1');
         const i2 = document.getElementById('custom2-opt2');
-        if (i1) i1.value = custom2Labels.c1;
-        if (i2) i2.value = custom2Labels.c2;
+        if (i1 && document.activeElement !== i1) i1.value = custom2Labels.c1;
+        if (i2 && document.activeElement !== i2) i2.value = custom2Labels.c2;
     }
     currentMode = mode;
     updateStudentModeUI(mode);
@@ -659,7 +662,7 @@ window.setGlobalMode = function(mode) {
     showToast('已切換題型：' + mode, 'success');
 };
 
-// custom2 標籤輸入即時更新（不廣播，只本地預覽；切換/送出才廣播）
+// custom2 標籤輸入即時更新（廣播給所有學生，本地 + 跨裝置）
 window.onCustom2Input = function() {
     const i1 = document.getElementById('custom2-opt1');
     const i2 = document.getElementById('custom2-opt2');
@@ -667,6 +670,13 @@ window.onCustom2Input = function() {
     if (i2) custom2Labels.c2 = i2.value.trim() || '選項 2';
     // 學生端若已在 custom2 介面，按鈕即時更新
     if (currentMode === 'custom2') updateStudentModeUI('custom2');
+    // 廣播給其他分頁 / 跨裝置學生（輕量、不清空作答）
+    if (bcChannel) bcChannel.postMessage({
+        type: 'CUSTOM2_LABELS',
+        payload: { labels: { ...custom2Labels } },
+        msgId: Math.random().toString(36).substr(2, 10)
+    });
+    ntfySend('CUSTOM2_LABELS', { labels: { ...custom2Labels } });
 };
 
 window.clearAllResponses = function() {
