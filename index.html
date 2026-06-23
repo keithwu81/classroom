@@ -414,12 +414,24 @@ window.addEventListener('load', () => {
     initSSE(currentRole);            // 建立 SSE 連線
     updateStudentModeUI(currentMode);
 
+    // ★ 學生端：若 URL 自帶 dtt 題目且已登入，立即顯示
+    if (isForceStudent && dttSession && localStudent.isLoggedIn) {
+        setTimeout(() => {
+            if (typeof showDttStudentView === 'function') {
+                showDttStudentView();
+                showToast('已載入老師的解難決策題目 🧠', 'success');
+            }
+        }, 200);
+    }
+
     if (!isForceStudent) setTimeout(generateQRCode, 300);
 });
 
 // ── 房號 ──────────────────────────────────────────────────────
 function initRoomCode() {
     const urlRoom = urlParams.get('room');
+    // ★ 保留 dtt URL 參數（學生端用來直接載入題目）
+    const dttParam = urlParams.get('dtt') || '';
     if (urlRoom) {
         roomCode = urlRoom.toUpperCase();
     } else {
@@ -434,6 +446,30 @@ function initRoomCode() {
     }
     document.getElementById('teacher-room-display').innerText   = `房號: ${roomCode}`;
     document.getElementById('student-login-room-display').innerText = `房號：${roomCode}`;
+
+    // ★ 學生端：解析 URL 上的 dtt 題目（不依賴 SSE）
+    if (isForceStudent && dttParam) {
+        try {
+            const lite = JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(dttParam)))));
+            // 組回 dttSession 結構
+            dttSession = {
+                topic: lite.t,
+                q1: lite.q1 || '',
+                q4: lite.q4 || '',
+                methodCount: lite.mc,
+                methodNames: lite.mn || [],
+                methodImgs: lite.mi || [],          // 老師預填的「方法」內容（純文字）
+                conseqTexts: lite.ci || [],
+                methodImages: new Array(lite.mc || 0).fill([]).map(() => []),   // 沒有候選圖（QR 太長放不下）
+                conseqImages: new Array(lite.mc || 0).fill([]).map(() => []),
+                correctMethod: typeof lite.cm === 'number' ? lite.cm : 0,
+                openedAt: lite.op || Date.now()
+            };
+            console.log('[DTT] 從 URL 載入題目：', dttSession);
+        } catch(e) {
+            console.warn('[DTT] URL dtt 參數解析失敗', e);
+        }
+    }
 }
 
 // ── 本地狀態恢復 ──────────────────────────────────────────────
@@ -816,6 +852,10 @@ window.loginStudent = function() {
     localStorage.setItem('cyk_student_' + roomCode, JSON.stringify(localStudent));
     showStudentWorkspace();
     showToast('歡迎 ' + name + '！', 'success');
+    // ★ 若 URL 已帶 dtt 題目，登入後立即顯示（不依賴 SSE）
+    if (dttSession && typeof showDttStudentView === 'function') {
+        setTimeout(() => showDttStudentView(), 100);
+    }
     // 登入後請求目前題型
     ntfySend('REQ_STATE', {});
     // ★ 重試 3 次（間隔 2s）確保一定拿到老師端狀態（包含 DTT 題目）
@@ -1690,10 +1730,31 @@ window.dttConfirm = function() {
 // ── QR Code 模態 ────────────────────────────────────────────
 function openDttQr() {
     document.getElementById('dtt-qr-modal').classList.remove('dtt-hidden');
-    const url = location.origin + location.pathname + '?room=' + roomCode + '&role=student';
+    // ★ 把題目序列化塞進 URL，學生掃碼即得（不依賴 SSE）
+    // 只放文字欄位，圖片仍靠 SSE/REQ_DTT 補（若有）
+    const lite = {
+        t: dttSession.topic,
+        q1: dttSession.q1 || '',
+        q4: dttSession.q4 || '',
+        mc: dttSession.methodCount,
+        mn: dttSession.methodNames,
+        mi: dttSession.methodImgs || [],       // 文字內容
+        ci: dttSession.conseqTexts || [],     // 後果文字
+        miI: (dttSession.methodImages || []).length,  // 標記幾個方法有候選圖
+        ciI: (dttSession.conseqImages || []).length,
+        cm: dttSession.correctMethod,
+        op: dttSession.openedAt
+    };
+    let liteStr = '';
+    try {
+        liteStr = btoa(unescape(encodeURIComponent(JSON.stringify(lite))));
+    } catch(e) { console.warn('序列化 dtt lite 失敗', e); }
+    const liteParam = liteStr ? '&dtt=' + encodeURIComponent(liteStr) : '';
+    const url = location.origin + location.pathname + '?room=' + roomCode + '&role=student' + liteParam;
     document.getElementById('dtt-qr-img').src = 'https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=' + encodeURIComponent(url);
     document.getElementById('dtt-qr-url').value = url;
     document.getElementById('dtt-qr-topic').textContent = '🧠 ' + dttSession.topic;
+    if (liteStr.length > 2500) showToast('⚠️ 題目較大，若 QR 掃不出請用網址列開啟', 'warning', 4000);
 }
 window.closeDttQr = () => document.getElementById('dtt-qr-modal').classList.add('dtt-hidden');
 window.dttCopyUrl = function() {
