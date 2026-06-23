@@ -74,12 +74,34 @@
         </div>
     </header>
 
-    <!-- 浮動工具列：解難決策圖入口（老師主控台專用） -->
-    <div id="dtt-floating-btns" class="fixed bottom-6 right-6 z-[9000] flex flex-col gap-3 focus-hide">
-        <button onclick="openDttEditor()" title="解難決策圖"
-            class="w-16 h-16 rounded-2xl bg-gradient-to-br from-rose-500 to-amber-500 hover:from-rose-400 hover:to-amber-400 text-white shadow-2xl flex flex-col items-center justify-center transition-transform hover:scale-110 active:scale-95 ring-4 ring-white">
+    <!-- 浮動工具列 FAB（老師主控台專用） -->
+    <div id="toolbar-fab" class="fixed bottom-6 right-6 z-[9000] flex flex-col-reverse items-end gap-3 focus-hide" style="display:none">
+        <!-- 主按鈕（展開/收合） -->
+        <button id="toolbar-main" onclick="toggleToolbar()" title="工具箱"
+            class="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-500 hover:from-indigo-400 hover:to-purple-400 text-white shadow-2xl flex flex-col items-center justify-center transition-all hover:scale-110 active:scale-95 ring-4 ring-white">
+            <span id="toolbar-main-icon" class="text-3xl leading-none">🧰</span>
+            <span class="text-[9px] font-black mt-0.5">工具</span>
+        </button>
+        <!-- 子按鈕群 -->
+        <button onclick="openDttEditor()" data-tool="dtt" title="解難決策圖"
+            class="tool-fab-btn bg-gradient-to-br from-rose-500 to-amber-500 text-white">
             <span class="text-2xl leading-none">🧠</span>
-            <span class="text-[9px] font-black mt-0.5">解難決策</span>
+            <span class="text-[10px] font-black mt-0.5">解難決策</span>
+        </button>
+        <button onclick="openTimer()" data-tool="timer" title="計時器"
+            class="tool-fab-btn bg-gradient-to-br from-cyan-500 to-blue-500 text-white">
+            <span class="text-2xl leading-none">⏱️</span>
+            <span class="text-[10px] font-black mt-0.5">計時器</span>
+        </button>
+        <button onclick="openLottery()" data-tool="lottery" title="抽籤"
+            class="tool-fab-btn bg-gradient-to-br from-fuchsia-500 to-pink-500 text-white">
+            <span class="text-2xl leading-none">🎰</span>
+            <span class="text-[10px] font-black mt-0.5">抽籤</span>
+        </button>
+        <button onclick="openLinkQr()" data-tool="link" title="連結頁 QR"
+            class="tool-fab-btn bg-gradient-to-br from-emerald-500 to-teal-500 text-white">
+            <span class="text-2xl leading-none">🔗</span>
+            <span class="text-[10px] font-black mt-0.5">連結頁</span>
         </button>
     </div>
 
@@ -113,6 +135,10 @@
                     <div class="space-y-4">
                         <input type="text" id="input-name" placeholder="請輸入姓名 (例: 陳小明)" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-semibold text-center text-lg">
                         <button onclick="loginStudent()" class="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg transition-all">進入課堂系統</button>
+                        <button onclick="studentFetchDtt()" id="btn-fetch-dtt" class="w-full py-3 bg-rose-100 hover:bg-rose-200 text-rose-700 font-bold rounded-xl shadow transition-all flex items-center justify-center gap-2">
+                            🔄 載入老師的解難決策題目
+                        </button>
+                        <p class="text-[10px] text-slate-500 text-center leading-relaxed">💡 iPad 用戶：若掃碼後看不到題目，按此按鈕即可手動載入</p>
                     </div>
                 </div>
             </div>
@@ -414,17 +440,23 @@ window.addEventListener('load', () => {
     initSSE(currentRole);            // 建立 SSE 連線
     updateStudentModeUI(currentMode);
 
-    // ★ 學生端：若 URL 自帶 dtt 題目且已登入，立即顯示
-    if (isForceStudent && dttSession && localStudent.isLoggedIn) {
+    // ★ 學生端：自動拉取老師的 DTT 題目（iPad Safari 友善：不用 SSE，用 fetch GET）
+    if (isForceStudent) {
         setTimeout(() => {
-            if (typeof showDttStudentView === 'function') {
-                showDttStudentView();
-                showToast('已載入老師的解難決策題目 🧠', 'success');
+            if (typeof studentFetchDtt === 'function') {
+                studentFetchDtt().catch(() => {});
             }
-        }, 200);
+        }, 800);
     }
 
     if (!isForceStudent) setTimeout(generateQRCode, 300);
+    // 顯示 FAB 工具列（老師全功能、學生顯示計時器/抽籤兩個子按鈕）
+    const fab = document.getElementById('toolbar-fab');
+    if (fab) fab.style.display = 'flex';
+    if (isForceStudent) {
+        // 學生端：隱藏解難決策/連結頁（這兩個是老師對學生廣播用的）
+        document.querySelectorAll('#toolbar-fab [data-tool="dtt"], #toolbar-fab [data-tool="link"]').forEach(b => b.style.display = 'none');
+    }
 });
 
 // ── 房號 ──────────────────────────────────────────────────────
@@ -1260,6 +1292,18 @@ window.clearPresentation = function() {
 <style>
 /* DTT 共用 */
 .dtt-hidden { display: none !important; }
+
+/* FAB 工具按鈕 */
+.tool-fab-btn { display:flex; flex-direction:column; align-items:center; justify-content:center; width:64px; height:64px; border-radius:16px; box-shadow:0 8px 24px rgba(0,0,0,.18); transition:all .2s; opacity:0; transform:translateY(20px) scale(.7); pointer-events:none; }
+#toolbar-fab.expanded .tool-fab-btn { opacity:1; transform:translateY(0) scale(1); pointer-events:auto; }
+#toolbar-fab.expanded .tool-fab-btn:nth-child(2) { transition-delay:.05s; }
+#toolbar-fab.expanded .tool-fab-btn:nth-child(3) { transition-delay:.10s; }
+#toolbar-fab.expanded .tool-fab-btn:nth-child(4) { transition-delay:.15s; }
+#toolbar-fab.expanded .tool-fab-btn:nth-child(5) { transition-delay:.20s; }
+.tool-fab-btn:hover { transform:translateY(-2px) scale(1.05); }
+#toolbar-fab.expanded .tool-fab-btn:hover { transform:translateY(-2px) scale(1.08); }
+#toolbar-fab.expanded #toolbar-main-icon { transform:rotate(45deg); transition:transform .3s; }
+#toolbar-main-icon { transition:transform .3s; display:inline-block; }
 .dtt-modal { position: fixed; inset: 0; background: rgba(15,23,42,.78); backdrop-filter: blur(6px); z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 16px; }
 .dtt-card  { background: #fff; border-radius: 18px; box-shadow: 0 30px 80px rgba(0,0,0,.4); width: 100%; max-width: 1100px; max-height: 92vh; display: flex; flex-direction: column; overflow: hidden; }
 .dtt-card-sm { max-width: 460px; }
@@ -1303,6 +1347,12 @@ window.clearPresentation = function() {
 
 /* 學生端作答 */
 .dtt-student-card { background: #fff; border-radius: 16px; padding: 14px; border: 1px solid #e2e8f0; }
+/* iPad Safari 友善：字體≥16px 才不會自動 zoom */
+#mode-student-dtt input, #mode-student-dtt textarea, #mode-student-dtt [contenteditable] { font-size:16px !important; -webkit-user-select:text; user-select:text; }
+/* iOS Safari touch callout 禁用，避免長按選單干擾 */
+.dtt-student-method { -webkit-touch-callout:none; -webkit-tap-highlight-color:transparent; touch-action:manipulation; }
+.dtt-draggable { touch-action:none; }
+.dtt-dropzone { touch-action:none; }
 .dtt-student-title { font-size: 22px; font-weight: 900; text-align: center; margin-bottom: 12px; color: #be123c; }
 .dtt-student-method { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 10px; margin-bottom: 10px; }
 .dtt-student-method h4 { text-align: center; font-weight: 800; margin-bottom: 6px; color: #475569; font-size: 15px; }
@@ -1392,12 +1442,14 @@ window.clearPresentation = function() {
       <div style="background:#fff;padding:10px;border-radius:14px;display:inline-block;border:2px solid #fecdd3">
         <img id="dtt-qr-img" style="width:200px;height:200px" alt="QR">
       </div>
+      <p id="dtt-qr-fallback" class="dtt-hidden" style="margin-top:8px;font-size:11px;color:#be123c"></p>
       <div style="margin-top:12px">
-        <p style="font-size:11px;color:#64748b;font-weight:700">或複製專屬網址：</p>
+        <p style="font-size:11px;color:#64748b;font-weight:700">📋 三種方法把題目送到學生：</p>
         <div style="display:flex;margin-top:4px">
           <input id="dtt-qr-url" readonly style="flex:1;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px 0 0 6px;font-size:10px;background:#f8fafc">
           <button onclick="dttCopyUrl()" class="dtt-btn dtt-btn-primary" style="border-radius:0 6px 6px 0">複製</button>
         </div>
+        <button onclick="dttCopyTopic()" class="dtt-btn dtt-btn-ghost" style="margin-top:6px;font-size:11px;padding:5px 12px">📝 複製純文字題目（貼到 LINE）</button>
       </div>
     </div>
     <div class="dtt-footer">
@@ -1439,6 +1491,112 @@ window.clearPresentation = function() {
       <button class="dtt-close" onclick="closeDttDetail()">×</button>
     </div>
     <div class="dtt-body" id="dtt-detail-body"></div>
+  </div>
+</div>
+
+<!-- 計時器模態 -->
+<div id="timer-modal" class="dtt-modal dtt-hidden">
+  <div class="dtt-card dtt-card-sm">
+    <div class="dtt-header" style="background:linear-gradient(135deg,#06b6d4,#3b82f6)">
+      <h2>⏱️ 計時器</h2>
+      <button class="dtt-close" onclick="closeTimer()">×</button>
+    </div>
+    <div class="dtt-body" style="text-align:center">
+      <div id="timer-display" style="font-size:84px;font-weight:900;color:#1e40af;letter-spacing:2px;line-height:1;font-variant-numeric:tabular-nums">05:00</div>
+      <p id="timer-status" style="font-size:12px;color:#64748b;margin-top:6px">準備開始</p>
+      <div style="display:flex;justify-content:center;gap:6px;margin-top:14px;flex-wrap:wrap">
+        <button onclick="timerSet(60)"  class="dtt-btn dtt-btn-ghost" style="background:#dbeafe;color:#1e40af">1 分鐘</button>
+        <button onclick="timerSet(180)" class="dtt-btn dtt-btn-ghost" style="background:#bfdbfe;color:#1e3a8a">3 分鐘</button>
+        <button onclick="timerSet(300)" class="dtt-btn dtt-btn-ghost" style="background:#93c5fd;color:#1e3a8a">5 分鐘</button>
+        <button onclick="timerSet(600)" class="dtt-btn dtt-btn-ghost" style="background:#60a5fa;color:#fff">10 分鐘</button>
+      </div>
+      <div style="display:flex;justify-content:center;gap:10px;margin-top:18px">
+        <button onclick="timerStart()" id="timer-start-btn" class="dtt-btn dtt-btn-primary" style="background:linear-gradient(135deg,#06b6d4,#3b82f6)">▶ 開始</button>
+        <button onclick="timerPause()" class="dtt-btn dtt-btn-ghost">⏸ 暫停</button>
+        <button onclick="timerReset()" class="dtt-btn dtt-btn-ghost">↻ 重設</button>
+      </div>
+      <p style="font-size:11px;color:#94a3b8;margin-top:14px">📡 學生端會即時同步看到剩餘時間</p>
+    </div>
+  </div>
+</div>
+
+<!-- 學生端計時器顯示（無需 modal） -->
+<div id="timer-student-widget" class="dtt-hidden" style="position:fixed;bottom:6rem;right:6rem;z-[8000];background:#fff;border:3px solid #3b82f6;border-radius:16px;padding:12px 20px;box-shadow:0 8px 24px rgba(0,0,0,.15);text-align:center;min-width:140px">
+  <div style="font-size:11px;color:#64748b;font-weight:800;margin-bottom:4px">⏱️ 剩餘時間</div>
+  <div id="timer-student-display" style="font-size:42px;font-weight:900;color:#1e40af;line-height:1;font-variant-numeric:tabular-nums">05:00</div>
+</div>
+
+<!-- 抽籤模態 -->
+<div id="lottery-modal" class="dtt-modal dtt-hidden">
+  <div class="dtt-card" style="max-width:600px">
+    <div class="dtt-header" style="background:linear-gradient(135deg,#d946ef,#ec4899)">
+      <h2>🎰 抽籤</h2>
+      <button class="dtt-close" onclick="closeLottery()">×</button>
+    </div>
+    <div class="dtt-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div>
+          <label style="font-weight:800;font-size:12px;color:#831843;display:block;margin-bottom:6px">學生名單（每行一個）</label>
+          <textarea id="lottery-names" rows="10" placeholder="陳小明&#10;李小美&#10;王大文&#10;張小玲"
+            style="width:100%;padding:8px;border:2px solid #fbcfe8;border-radius:8px;font-family:inherit;font-size:13px;resize:vertical"></textarea>
+          <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+            <button onclick="lotteryLoadDemo()" class="dtt-btn dtt-btn-ghost" style="font-size:11px;padding:4px 10px">📝 載入範例</button>
+            <button onclick="lotteryClear()" class="dtt-btn dtt-btn-ghost" style="font-size:11px;padding:4px 10px">🧹 清空</button>
+            <button onclick="lotteryShuffle()" class="dtt-btn dtt-btn-ghost" style="font-size:11px;padding:4px 10px">🔀 打散</button>
+          </div>
+          <p id="lottery-count" style="font-size:11px;color:#64748b;margin-top:6px">0 人</p>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center">
+          <div id="lottery-wheel" style="position:relative;width:240px;height:240px;border-radius:50%;background:conic-gradient(#fbcfe8 0 25%,#f9a8d4 25% 50%,#f472b6 50% 75%,#ec4899 75% 100%);box-shadow:0 6px 20px rgba(236,72,153,.4);display:flex;align-items:center;justify-content:center;transition:transform 0s">
+            <div style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:14px solid transparent;border-right:14px solid transparent;border-top:24px solid #831843;z-index:10"></div>
+            <div id="lottery-result" style="background:#fff;border-radius:50%;width:140px;height:140px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:900;color:#831843;text-align:center;padding:8px;box-shadow:inset 0 2px 8px rgba(0,0,0,.1)">？</div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:14px">
+            <button onclick="lotterySpin()" id="lottery-spin-btn" class="dtt-btn dtt-btn-primary" style="background:linear-gradient(135deg,#d946ef,#ec4899)">🎰 抽！</button>
+            <button onclick="lotteryPublish()" id="lottery-publish-btn" class="dtt-btn dtt-btn-ghost">📡 推送給學生</button>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:14px;padding:10px;background:#fdf2f8;border-radius:10px;border:1px solid #fbcfe8">
+        <p style="font-size:11px;color:#9d174d;font-weight:800;margin-bottom:6px">📜 抽過的紀錄</p>
+        <div id="lottery-history" style="font-size:13px;color:#831843;line-height:1.7">（尚未抽籤）</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 學生端抽籤結果 -->
+<div id="lottery-student-widget" class="dtt-hidden" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-[8500];background:linear-gradient(135deg,#d946ef,#ec4899);color:#fff;border-radius:24px;padding:32px 48px;box-shadow:0 20px 60px rgba(236,72,153,.5);text-align:center;animation:lotteryPop .5s cubic-bezier(.34,1.56,.64,1)">
+  <div style="font-size:14px;font-weight:800;opacity:.9;margin-bottom:6px">🎉 中獎的是</div>
+  <div id="lottery-student-name" style="font-size:48px;font-weight:900;letter-spacing:2px;text-shadow:0 4px 12px rgba(0,0,0,.3)">？</div>
+</div>
+<style>
+@keyframes lotteryPop { 0%{transform:translate(-50%,-50%) scale(.3);opacity:0} 100%{transform:translate(-50%,-50%) scale(1);opacity:1} }
+.lottery-confetti { position:fixed; width:10px; height:10px; pointer-events:none; z-index:8600; }
+</style>
+
+<!-- 連結頁 QR 模態 -->
+<div id="linkqr-modal" class="dtt-modal dtt-hidden">
+  <div class="dtt-card dtt-card-sm">
+    <div class="dtt-header" style="background:linear-gradient(135deg,#10b981,#14b8a6)">
+      <h2>🔗 連結頁 QR Code</h2>
+      <button class="dtt-close" onclick="closeLinkQr()">×</button>
+    </div>
+    <div class="dtt-body" style="text-align:center">
+      <input id="linkqr-url" type="url" placeholder="貼上網址，例如 https://wordwall.net/..."
+        class="w-full px-3 py-2.5 border-2 border-emerald-200 focus:border-emerald-500 rounded-lg outline-none text-sm font-semibold mb-3">
+      <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;justify-content:center">
+        <button onclick="linkqrFill('https://create.kahoot.it/details/')" class="dtt-btn dtt-btn-ghost" style="font-size:11px;padding:4px 10px">Kahoot</button>
+        <button onclick="linkqrFill('https://wordwall.net/')" class="dtt-btn dtt-btn-ghost" style="font-size:11px;padding:4px 10px">Wordwall</button>
+        <button onclick="linkqrFill('https://quizizz.com/')" class="dtt-btn dtt-btn-ghost" style="font-size:11px;padding:4px 10px">Quizizz</button>
+        <button onclick="linkqrFill('https://www.mentimeter.com/')" class="dtt-btn dtt-btn-ghost" style="font-size:11px;padding:4px 10px">Mentimeter</button>
+      </div>
+      <div id="linkqr-display" class="dtt-hidden" style="background:#fff;padding:10px;border-radius:14px;display:inline-block;border:2px solid #a7f3d0">
+        <img id="linkqr-img" style="width:220px;height:220px;display:block" alt="QR">
+      </div>
+      <p id="linkqr-hint" style="font-size:11px;color:#64748b;margin-top:10px">輸入網址後按 Enter 或貼上即顯示 QR Code</p>
+      <p id="linkqr-fallback" class="dtt-hidden" style="margin-top:10px;font-size:12px;color:#be123c"></p>
+    </div>
   </div>
 </div>
 
@@ -1730,33 +1888,54 @@ window.dttConfirm = function() {
 // ── QR Code 模態 ────────────────────────────────────────────
 function openDttQr() {
     document.getElementById('dtt-qr-modal').classList.remove('dtt-hidden');
-    // ★ 把題目序列化塞進 URL，學生掃碼即得（不依賴 SSE）
-    // 只放文字欄位，圖片仍靠 SSE/REQ_DTT 補（若有）
-    const lite = {
-        t: dttSession.topic,
-        q1: dttSession.q1 || '',
-        q4: dttSession.q4 || '',
-        mc: dttSession.methodCount,
-        mn: dttSession.methodNames,
-        mi: dttSession.methodImgs || [],       // 文字內容
-        ci: dttSession.conseqTexts || [],     // 後果文字
-        miI: (dttSession.methodImages || []).length,  // 標記幾個方法有候選圖
-        ciI: (dttSession.conseqImages || []).length,
-        cm: dttSession.correctMethod,
-        op: dttSession.openedAt
-    };
-    let liteStr = '';
-    try {
-        liteStr = btoa(unescape(encodeURIComponent(JSON.stringify(lite))));
-    } catch(e) { console.warn('序列化 dtt lite 失敗', e); }
-    const liteParam = liteStr ? '&dtt=' + encodeURIComponent(liteStr) : '';
-    const url = location.origin + location.pathname + '?room=' + roomCode + '&role=student' + liteParam;
-    document.getElementById('dtt-qr-img').src = 'https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=' + encodeURIComponent(url);
+    // ★ iPad Safari 對長 URL 截斷很敏感 — QR 只帶房號，題目走 ntfy 輪詢
+    const url = location.origin + location.pathname + '?room=' + roomCode + '&role=student';
+    // 同時廣播一次給學生（多通道保險）
+    dttBroadcast('dtt_publish', dttSession);
     document.getElementById('dtt-qr-url').value = url;
     document.getElementById('dtt-qr-topic').textContent = '🧠 ' + dttSession.topic;
-    if (liteStr.length > 2500) showToast('⚠️ 題目較大，若 QR 掃不出請用網址列開啟', 'warning', 4000);
+    // QR 圖（主 API + 2 個 fallback）
+    const img = document.getElementById('dtt-qr-img');
+    const fallback = document.getElementById('dtt-qr-fallback');
+    fallback.classList.add('dtt-hidden');
+    img.style.display = '';
+    const qr1 = 'https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=' + encodeURIComponent(url);
+    const qr2 = 'https://chart.googleapis.com/chart?cht=qr&chs=240x240&chl=' + encodeURIComponent(url);
+    img.onerror = () => { img.src = qr2; img.onerror = () => {
+        img.style.display = 'none';
+        fallback.classList.remove('dtt-hidden');
+        fallback.innerHTML = '⚠️ 無法生成 QR。<br>請用「📋 複製」按鈕把網址傳給學生，或用「📝 複製純文字題目」貼到 LINE。<br><br>學生輸入網址後，按「🔄 載入老師題目」即可。';
+    }; };
+    img.src = qr1;
+    // 提示學生端可手動載入
+    showToast('✅ 已發佈！學生掃碼後按「🔄 載入老師題目」即可', 'success', 3500);
 }
 window.closeDttQr = () => document.getElementById('dtt-qr-modal').classList.add('dtt-hidden');
+// 純文字題目（給老師 LINE 給學生，學生打開網頁可輸入「題目代碼」載入）
+window.dttCopyTopic = function() {
+    if (!dttSession) return;
+    const s = dttSession;
+    const lines = [];
+    lines.push('🧠 解難決策題：' + s.topic);
+    lines.push('---');
+    if (s.q1) lines.push('📌 ' + stripHtml(s.q1));
+    for (let i = 0; i < s.methodCount; i++) {
+        const name = s.methodNames[i] || ('方法 ' + (i+1));
+        lines.push(`\n方法 ${i+1}：${name}`);
+        if (s.methodImgs && s.methodImgs[i]) lines.push('   內容：' + stripHtml(s.methodImgs[i]));
+        if (s.conseqTexts && s.conseqTexts[i]) lines.push('   後果：' + stripHtml(s.conseqTexts[i]));
+    }
+    lines.push('\n➡️ 在老師電腦/平板打開「解難決策圖」，選擇「連結頁 QR」工具 → 把題目代碼貼上即可載入');
+    const txt = lines.join('\n');
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(txt).then(() => showToast('已複製題目文字', 'success'));
+    } else {
+        const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+        showToast('已複製題目文字', 'success');
+    }
+};
+function stripHtml(html) { const d = document.createElement('div'); d.innerHTML = html; return (d.innerText || '').trim(); }
+
 window.dttCopyUrl = function() {
     const u = document.getElementById('dtt-qr-url');
     u.select(); document.execCommand('copy');
@@ -1928,6 +2107,57 @@ function dttBroadcast(type, payload) {
     // ntfy：跨裝置
     ntfySend(type, payload);
 }
+
+// ★ iPad Safari 友善：學生端手動 GET ntfy topic 拿最新 dtt 訊息（不用 SSE）
+window.studentFetchDtt = async function() {
+    const btn = document.getElementById('btn-fetch-dtt');
+    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ 載入中…'; }
+    const url = `https://ntfy.sh/cv_rm_${roomCode}/json?since=10m&poll=1`;
+    try {
+        showToast('🔄 從雲端拉取老師題目…', 'info', 2000);
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        // ntfy json stream 是一行一個 JSON
+        const text = await resp.text();
+        const lines = text.split('\n').filter(Boolean);
+        let found = null;
+        for (const line of lines) {
+            try {
+                const e = JSON.parse(line);
+                if (e.event === 'message' && e.message) {
+                    const msg = JSON.parse(e.message);
+                    if (msg && msg.type === 'dtt_publish' && msg.payload) {
+                        found = msg.payload;
+                        // 取最新一筆
+                    }
+                }
+            } catch(_) {}
+        }
+        if (found) {
+            dttSession = found;
+            if (typeof showDttStudentView === 'function') {
+                if (!localStudent.isLoggedIn) {
+                    // 自動用「訪客」身份登入，繞過輸入姓名
+                    localStudent.name = '訪客_' + Math.random().toString(36).slice(2, 6);
+                    localStudent.isLoggedIn = true;
+                    showStudentWorkspace();
+                    showDttStudentView();
+                    showToast('✅ 自動以訪客身份進入，已載入老師題目', 'success');
+                } else {
+                    showDttStudentView();
+                    showToast('✅ 題目已載入', 'success');
+                }
+            }
+        } else {
+            showToast('⚠️ 找不到老師題目，請確認房號正確或老師已按「確定並發佈」', 'warning', 4000);
+        }
+    } catch (err) {
+        console.error('studentFetchDtt 失敗', err);
+        showToast('❌ 載入失敗：' + err.message, 'error', 4000);
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '🔄 載入老師的解難決策題目'; }
+    }
+};
 
 // ── 學生端：進入解難決策作答 ──────────────────────────────
 function showDttStudentView() {
@@ -2413,6 +2643,302 @@ function dttTryHook() {
     setTimeout(dttTryHook, 2000);
 }
 dttTryHook();
+
+// ═══════════════════════════════════════════════════════════════
+//  FAB 工具列：計時器 / 抽籤 / 連結頁 QR
+//  訊息類型：timer_set / timer_start / timer_tick / timer_pause / timer_reset
+//           lottery_pick
+//  全部走現有 ntfy 通道
+// ═══════════════════════════════════════════════════════════════
+window.toggleToolbar = function() {
+    document.getElementById('toolbar-fab').classList.toggle('expanded');
+};
+
+// ── 計時器 ──────────────────────────────────────────────────
+let timerState = { total: 300, remain: 300, running: false, lastTick: 0 };
+let timerInterval = null;
+
+window.openTimer = function() { document.getElementById('timer-modal').classList.remove('dtt-hidden'); timerRender(); };
+window.closeTimer = function() { document.getElementById('timer-modal').classList.add('dtt-hidden'); };
+
+function timerRender() {
+    const m = Math.floor(timerState.remain / 60);
+    const s = timerState.remain % 60;
+    const txt = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    document.getElementById('timer-display').textContent = txt;
+    document.getElementById('timer-status').textContent =
+        timerState.running ? '進行中…' : (timerState.remain < timerState.total ? '已暫停' : '準備開始');
+    // 學生端
+    const sd = document.getElementById('timer-student-display');
+    if (sd) sd.textContent = txt;
+    const sw = document.getElementById('timer-student-widget');
+    if (sw) sw.classList.toggle('dtt-hidden', !(timerState.running || timerState.remain < timerState.total));
+}
+
+window.timerSet = function(sec) {
+    timerState.total = sec;
+    timerState.remain = sec;
+    timerState.running = false;
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+    timerRender();
+    dttBroadcast('timer_set', { total: sec });
+};
+
+window.timerStart = function() {
+    if (timerState.remain <= 0) timerState.remain = timerState.total;
+    timerState.running = true;
+    timerState.lastTick = Date.now();
+    dttBroadcast('timer_start', { remain: timerState.remain });
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+        const now = Date.now();
+        const dt = (now - timerState.lastTick) / 1000;
+        timerState.lastTick = now;
+        timerState.remain = Math.max(0, timerState.remain - dt);
+        if (timerState.remain <= 0) {
+            timerState.remain = 0;
+            timerState.running = false;
+            clearInterval(timerInterval); timerInterval = null;
+            // 提示音
+            try { beep(); } catch(e) {}
+            dttBroadcast('timer_reset', { total: timerState.total });
+            showToast('⏰ 時間到！', 'warning', 5000);
+        } else {
+            // 每秒廣播一次給學生
+            dttBroadcast('timer_tick', { remain: Math.ceil(timerState.remain), running: true });
+        }
+        timerRender();
+    }, 1000);
+    timerRender();
+};
+
+window.timerPause = function() {
+    timerState.running = false;
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+    dttBroadcast('timer_pause', { remain: Math.ceil(timerState.remain) });
+    timerRender();
+};
+
+window.timerReset = function() {
+    timerState.remain = timerState.total;
+    timerState.running = false;
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+    dttBroadcast('timer_reset', { total: timerState.total });
+    timerRender();
+};
+
+function beep() {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        [0, 200, 400].forEach(t => {
+            const o = ctx.createOscillator(); const g = ctx.createGain();
+            o.frequency.value = 880; g.gain.value = 0.15;
+            o.connect(g); g.connect(ctx.destination);
+            o.start(ctx.currentTime + t / 1000);
+            o.stop(ctx.currentTime + t / 1000 + 0.18);
+        });
+    } catch(e) {}
+}
+
+// 計時器訊息路由（學生端用）
+// 注入到 dttHandleIncoming 的 type 分支
+
+// ── 抽籤 ──────────────────────────────────────────────────
+let lotteryNames = [];
+let lotteryHistory = [];
+let lotterySpinning = false;
+
+window.openLottery = function() {
+    document.getElementById('lottery-modal').classList.remove('dtt-hidden');
+    // 載入儲存的名單
+    try {
+        const saved = localStorage.getItem('lottery_names_' + roomCode);
+        if (saved) document.getElementById('lottery-names').value = saved;
+        const hist = JSON.parse(localStorage.getItem('lottery_hist_' + roomCode) || '[]');
+        lotteryHistory = hist;
+        lotteryRenderHist();
+    } catch(e) {}
+    lotteryUpdateCount();
+};
+
+window.closeLottery = function() { document.getElementById('lottery-modal').classList.add('dtt-hidden'); };
+
+window.lotteryLoadDemo = function() {
+    document.getElementById('lottery-names').value = '陳小明\n李小美\n王大文\n張小玲\n黃小華\n林大衛\n吳小芳\n周大壯';
+    lotteryUpdateCount();
+};
+
+window.lotteryClear = function() {
+    document.getElementById('lottery-names').value = '';
+    lotteryUpdateCount();
+};
+
+window.lotteryShuffle = function() {
+    const arr = document.getElementById('lottery-names').value.split('\n').map(s => s.trim()).filter(Boolean);
+    for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
+    document.getElementById('lottery-names').value = arr.join('\n');
+    lotteryUpdateCount();
+};
+
+function lotteryUpdateCount() {
+    const arr = document.getElementById('lottery-names').value.split('\n').map(s => s.trim()).filter(Boolean);
+    lotteryNames = arr;
+    document.getElementById('lottery-count').textContent = arr.length + ' 人';
+    try { localStorage.setItem('lottery_names_' + roomCode, document.getElementById('lottery-names').value); } catch(e) {}
+}
+
+window.lotterySpin = function() {
+    if (lotterySpinning) return;
+    if (lotteryNames.length === 0) return showToast('請先輸入學生名單', 'warning');
+    lotterySpinning = true;
+    const btn = document.getElementById('lottery-spin-btn');
+    btn.disabled = true;
+    const wheel = document.getElementById('lottery-wheel');
+    const result = document.getElementById('lottery-result');
+    // 動畫：高速跑名字 1.5 秒
+    let ticks = 0;
+    const totalTicks = 20;
+    const iv = setInterval(() => {
+        const i = Math.floor(Math.random() * lotteryNames.length);
+        result.textContent = lotteryNames[i];
+        ticks++;
+        if (ticks >= totalTicks) {
+            clearInterval(iv);
+            // 最終結果
+            const finalIdx = Math.floor(Math.random() * lotteryNames.length);
+            const winner = lotteryNames[finalIdx];
+            result.textContent = winner;
+            lotterySpinning = false;
+            btn.disabled = false;
+            lotteryHistory.unshift({ name: winner, ts: Date.now() });
+            try { localStorage.setItem('lottery_hist_' + roomCode, JSON.stringify(lotteryHistory.slice(0, 50))); } catch(e) {}
+            lotteryRenderHist();
+        }
+    }, 70);
+};
+
+function lotteryRenderHist() {
+    const el = document.getElementById('lottery-history');
+    if (!el) return;
+    if (lotteryHistory.length === 0) { el.textContent = '（尚未抽籤）'; return; }
+    el.innerHTML = lotteryHistory.slice(0, 12).map((h, i) => {
+        const t = new Date(h.ts).toLocaleTimeString('zh-Hant', { hour12: false });
+        return `<div>${i === 0 ? '🎉' : '·'} <b>${dttEsc(h.name)}</b> <span style="color:#94a3b8;font-size:11px">${t}</span></div>`;
+    }).join('');
+}
+
+window.lotteryPublish = function() {
+    if (lotteryHistory.length === 0) return showToast('請先抽一次', 'warning');
+    const winner = lotteryHistory[0];
+    dttBroadcast('lottery_pick', { name: winner.name, ts: winner.ts });
+    showToast('已推送給學生', 'success');
+};
+
+// ── 連結頁 QR ──────────────────────────────────────────────
+window.openLinkQr = function() {
+    document.getElementById('linkqr-modal').classList.remove('dtt-hidden');
+    const saved = localStorage.getItem('linkqr_url');
+    if (saved) document.getElementById('linkqr-url').value = saved;
+};
+
+window.closeLinkQr = function() { document.getElementById('linkqr-modal').classList.add('dtt-hidden'); };
+
+window.linkqrFill = function(url) {
+    document.getElementById('linkqr-url').value = url;
+    linkqrUpdate();
+};
+
+function linkqrUpdate() {
+    const url = document.getElementById('linkqr-url').value.trim();
+    if (!url) {
+        document.getElementById('linkqr-display').classList.add('dtt-hidden');
+        return;
+    }
+    try { localStorage.setItem('linkqr_url', url); } catch(e) {}
+    document.getElementById('linkqr-display').classList.remove('dtt-hidden');
+    // 嘗試主 API，失敗 fallback
+    const apiUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=' + encodeURIComponent(url);
+    const img = document.getElementById('linkqr-img');
+    const fallback = document.getElementById('linkqr-fallback');
+    fallback.classList.add('dtt-hidden');
+    img.onerror = () => {
+        img.src = 'https://chart.googleapis.com/chart?cht=qr&chs=240x240&chl=' + encodeURIComponent(url);
+        img.onerror = () => {
+            // 最後 fallback：顯示連結
+            fallback.classList.remove('dtt-hidden');
+            fallback.innerHTML = `⚠️ 無法生成 QR，請學生直接輸入網址：<br><b>${dttEsc(url)}</b>`;
+            img.style.display = 'none';
+        };
+    };
+    img.src = apiUrl;
+}
+
+document.addEventListener('input', e => {
+    if (e.target && e.target.id === 'linkqr-url') linkqrUpdate();
+    if (e.target && e.target.id === 'lottery-names') lotteryUpdateCount();
+});
+
+// ── 計時器 + 抽籤的 SSE 接收（學生端）──
+// 注入到 dttHandleIncoming
+</script>
+
+<script>
+// 學生端接收計時器 + 抽籤訊息
+(function() {
+    function studentHook(type, payload) {
+        if (type === 'timer_set') {
+            timerState.total = payload.total; timerState.remain = payload.total; timerState.running = false;
+            timerRender();
+        } else if (type === 'timer_start') {
+            timerState.running = true; timerState.remain = payload.remain || timerState.remain;
+            timerRender();
+        } else if (type === 'timer_tick') {
+            timerState.remain = payload.remain; timerState.running = true; timerRender();
+        } else if (type === 'timer_pause') {
+            timerState.running = false; timerState.remain = payload.remain; timerRender();
+        } else if (type === 'timer_reset') {
+            timerState.total = payload.total; timerState.remain = payload.total; timerState.running = false;
+            timerRender();
+        } else if (type === 'lottery_pick') {
+            const w = document.getElementById('lottery-student-widget');
+            const n = document.getElementById('lottery-student-name');
+            if (w && n) {
+                n.textContent = payload.name;
+                w.classList.remove('dtt-hidden');
+                try { beep(); } catch(e) {}
+                // 撒花
+                lotteryConfetti();
+                setTimeout(() => w.classList.add('dtt-hidden'), 6000);
+            }
+        }
+    }
+    // 等 dttHandleIncoming 存在後包裝
+    function wrap() {
+        if (typeof dttHandleIncoming === 'function') {
+            const orig = dttHandleIncoming;
+            window.dttHandleIncoming = function(type, payload) {
+                orig(type, payload);
+                studentHook(type, payload);
+            };
+        } else { setTimeout(wrap, 100); }
+    }
+    wrap();
+})();
+
+function lotteryConfetti() {
+    const colors = ['#f43f5e','#ec4899','#d946ef','#a855f7','#3b82f6','#10b981','#facc15'];
+    for (let i = 0; i < 40; i++) {
+        const c = document.createElement('div');
+        c.className = 'lottery-confetti';
+        c.style.cssText = `top:-20px;left:${50 + (Math.random()-0.5)*80}%;background:${colors[Math.floor(Math.random()*colors.length)]};transform:rotate(${Math.random()*360}deg)`;
+        document.body.appendChild(c);
+        const fall = c.animate([
+            { transform: c.style.transform + ' translateY(0)', opacity: 1 },
+            { transform: c.style.transform + ' translateY(110vh) rotate(' + (Math.random()*720) + 'deg)', opacity: 0 }
+        ], { duration: 2000 + Math.random()*1500, easing: 'cubic-bezier(.4,.2,.6,1)' });
+        fall.onfinish = () => c.remove();
+    }
+}
 </script>
 </body>
 </html>
