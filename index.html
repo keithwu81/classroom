@@ -140,10 +140,14 @@
                     <div class="space-y-4">
                         <input type="text" id="input-name" placeholder="請輸入姓名 (例: 陳小明)" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-semibold text-center text-lg">
                         <button onclick="loginStudent()" class="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg transition-all">進入課堂系統</button>
+                        <div style="display:flex;gap:6px">
+                            <input type="text" id="input-dtt-code" maxlength="6" placeholder="題目代碼" class="flex-1 min-w-0 px-3 py-2 bg-amber-50 border-2 border-amber-300 rounded-lg text-center font-mono font-bold text-amber-900 uppercase tracking-widest" style="font-size:18px;letter-spacing:4px">
+                            <button onclick="studentFetchByCode()" class="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg shadow">輸入</button>
+                        </div>
                         <button onclick="studentFetchDtt()" id="btn-fetch-dtt" class="w-full py-3 bg-rose-100 hover:bg-rose-200 text-rose-700 font-bold rounded-xl shadow transition-all flex items-center justify-center gap-2">
                             🔄 載入老師的解難決策題目
                         </button>
-                        <p class="text-[10px] text-slate-500 text-center leading-relaxed">💡 iPad 用戶：若掃碼後看不到題目，按此按鈕即可手動載入</p>
+                        <p class="text-[10px] text-slate-500 text-center leading-relaxed">💡 iPad 用戶：先試「輸入題目代碼」（老師會唸給你聽）；不行再按下方按鈕</p>
                     </div>
                 </div>
             </div>
@@ -1460,6 +1464,10 @@ window.clearPresentation = function() {
     </div>
     <div class="dtt-body" style="text-align:center">
       <div id="dtt-qr-topic" style="font-size:18px;font-weight:800;margin-bottom:10px;color:#be123c"></div>
+      <div style="background:#fef9c3;border:2px solid #facc15;border-radius:10px;padding:8px;margin-bottom:10px;text-align:center">
+        <div style="font-size:10px;color:#854d0e;font-weight:800;letter-spacing:1px">📋 題目代碼（學生掃不到時輸入）</div>
+        <div id="dtt-qr-code" style="font-size:24px;font-weight:900;color:#be123c;letter-spacing:4px;font-family:monospace;margin-top:2px">—</div>
+      </div>
       <div style="background:#fff;padding:10px;border-radius:14px;display:inline-block;border:2px solid #fecdd3">
         <img id="dtt-qr-img" style="width:200px;height:200px" alt="QR">
       </div>
@@ -1726,6 +1734,7 @@ function dttRenderEditor() {
 }
 
 let dttDraftImages = []; // 草稿：[[dataUrl,...], [dataUrl,...]]
+let dttCandidatePool = []; // 老師獨立上傳的候選答案庫（[dataUrl, ...]）
 function dttRefreshCorrectSel() {
     const sel = document.getElementById('dtt-correct');
     if (!sel) return;
@@ -1753,11 +1762,25 @@ function dttRenderTeacherPool(i) {
     const arr = dttDraftImages[i] || [];
     box.innerHTML = arr.map((src, j) => `
         <span style="position:relative;display:inline-block">
-            <img src="${src}" style="width:50px;height:50px;object-fit:cover;border-radius:4px;border:1px solid #cbd5e1">
-            <span onclick="dttRemoveTeacherImg(${i}, ${j})" style="position:absolute;top:-6px;right:-6px;background:#ef4444;color:#fff;width:16px;height:16px;border-radius:50%;text-align:center;line-height:16px;font-size:10px;cursor:pointer;font-weight:800">×</span>
+            <img src="${src}" onclick="dttShowLightbox('${src}')" style="width:100px;height:100px;object-fit:cover;border-radius:6px;border:2px solid #fbbf24;cursor:zoom-in">
+            <span onclick="dttRemoveTeacherImg(${i}, ${j})" style="position:absolute;top:-6px;right:-6px;background:#ef4444;color:#fff;width:20px;height:20px;border-radius:50%;text-align:center;line-height:20px;font-size:12px;cursor:pointer;font-weight:800">×</span>
         </span>`).join('');
     if (pill) pill.textContent = arr.length + ' 張圖';
 }
+
+// 圖片放大預覽燈箱
+window.dttShowLightbox = function(src) {
+    let lb = document.getElementById('dtt-img-lightbox');
+    if (!lb) {
+        lb = document.createElement('div');
+        lb.id = 'dtt-img-lightbox';
+        lb.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:99999;display:flex;align-items:center;justify-content:center;cursor:pointer;backdrop-filter:blur(4px)';
+        lb.onclick = () => lb.style.display = 'none';
+        document.body.appendChild(lb);
+    }
+    lb.innerHTML = `<img src="${src}" style="max-width:90vw;max-height:90vh;border-radius:8px;box-shadow:0 20px 60px rgba(0,0,0,.5)">`;
+    lb.style.display = 'flex';
+};
 function dttRemoveTeacherImg(i, j) { dttDraftImages[i].splice(j, 1); dttRenderTeacherPool(i); }
 function dttTeacherAddImg(i) {
     const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*';
@@ -1834,8 +1857,8 @@ function dttRenderTeacherConseqPool(i) {
     const arr = dttDraftConseqImages[i] || [];
     box.innerHTML = arr.map((src, j) => `
         <span style="position:relative;display:inline-block">
-            <img src="${src}" style="width:50px;height:50px;object-fit:cover;border-radius:4px;border:1px solid #cbd5e1">
-            <span onclick="dttRemoveTeacherConseqImg(${i}, ${j})" style="position:absolute;top:-6px;right:-6px;background:#ef4444;color:#fff;width:16px;height:16px;border-radius:50%;text-align:center;line-height:16px;font-size:10px;cursor:pointer;font-weight:800">×</span>
+            <img src="${src}" onclick="dttShowLightbox('${src}')" style="width:100px;height:100px;object-fit:cover;border-radius:6px;border:2px solid #16a34a;cursor:zoom-in">
+            <span onclick="dttRemoveTeacherConseqImg(${i}, ${j})" style="position:absolute;top:-6px;right:-6px;background:#ef4444;color:#fff;width:20px;height:20px;border-radius:50%;text-align:center;line-height:20px;font-size:12px;cursor:pointer;font-weight:800">×</span>
         </span>`).join('');
     if (pill) pill.textContent = arr.length + ' 張圖';
 }
@@ -1969,7 +1992,7 @@ function dttRenderTeacherThink() {
         // 老師已插的圖（從 dttSession.methodImages[i] 讀出來）
         const mImgs = (s.methodImages && s.methodImages[i]) || [];
         const mImgsHtml = mImgs.length > 0
-            ? `<div class="dtt-think-method-imgs" data-method="${i}" style="display:flex;gap:3px;flex-wrap:wrap;margin-bottom:4px">${mImgs.map(src => `<img src="${src}" style="width:36px;height:36px;object-fit:cover;border-radius:3px">`).join('')}</div>`
+            ? `<div class="dtt-think-method-imgs" data-method="${i}" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">${mImgs.map(src => `<img src="${src}" onclick="dttShowLightbox('${src}')" style="width:90px;height:90px;object-fit:cover;border-radius:6px;cursor:zoom-in;border:2px solid #fbbf24">`).join('')}</div>`
             : `<div class="dtt-think-method-imgs" data-method="${i}" style="display:none"></div>`;
         html.push(`<div style="flex:1;background:#fff;border:1px solid #fbcfe8;border-radius:8px;padding:6px">
             <div style="font-size:10px;color:#9d174d;font-weight:800;text-align:center;margin-bottom:4px">方法 ${i+1}：${dttEsc(name)}</div>
@@ -1995,7 +2018,7 @@ function dttRenderTeacherThink() {
         // 已插的後果圖
         const cImgs = (s.conseqImages && s.conseqImages[i]) || [];
         const cImgsHtml = cImgs.length > 0
-            ? `<div class="dtt-think-conseq-imgs" data-method="${i}" style="display:flex;gap:3px;flex-wrap:wrap;margin-bottom:4px">${cImgs.map(src => `<img src="${src}" style="width:36px;height:36px;object-fit:cover;border-radius:3px">`).join('')}</div>`
+            ? `<div class="dtt-think-conseq-imgs" data-method="${i}" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">${cImgs.map(src => `<img src="${src}" onclick="dttShowLightbox('${src}')" style="width:90px;height:90px;object-fit:cover;border-radius:6px;cursor:zoom-in;border:2px solid #16a34a">`).join('')}</div>`
             : `<div class="dtt-think-conseq-imgs" data-method="${i}" style="display:none"></div>`;
         html.push(`<div style="flex:1;background:#fff;border:1px solid #d1fae5;border-radius:8px;padding:6px">
             <div style="font-size:10px;color:#15803d;font-weight:800;text-align:center;margin-bottom:4px">${dttEsc(name)} 的後果</div>
@@ -2011,16 +2034,38 @@ function dttRenderTeacherThink() {
         </div>`);
     }
     html.push(`</div></div>`);
-    // 候選圖庫（從老師預填的 methodImages 中）
-    if (allImgs.length > 0) {
-        html.push(`<div style="background:#eff6ff;border:2px solid #bfdbfe;border-radius:12px;padding:10px;margin-bottom:10px">
-            <div style="font-size:11px;color:#1d4ed8;font-weight:800;margin-bottom:6px">🎯 候選答案庫（拖拉到上面任一格）</div>
-            <div style="display:flex;flex-wrap:wrap;gap:4px;padding:6px;background:#fff;border-radius:6px">`);
-        allImgs.forEach((it, idx) => {
-            html.push(`<img class="dtt-draggable" draggable="true" data-pool-idx="${idx}" data-correct-method="${it.method}" src="${it.src}" style="width:50px;height:50px;object-fit:cover;border-radius:4px;cursor:grab;border:2px solid #cbd5e1">`);
+    // 候選答案庫：合併「老師獨立上傳」+ 「方法圖」
+    const combined = [];
+    // 老師獨立上傳的圖
+    dttCandidatePool.forEach((src, idx) => combined.push({ src, correctMethod: -1, label: '候選庫' }));
+    // 方法圖（從 methodImages）
+    allImgs.forEach(it => combined.push(it));
+    html.push(`<div style="background:#eff6ff;border:2px solid #bfdbfe;border-radius:12px;padding:10px;margin-bottom:10px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:6px">
+            <div style="font-size:11px;color:#1d4ed8;font-weight:800">🎯 候選答案庫（${combined.length} 張）— 拖拉到上面任一格</div>
+            <div style="display:flex;gap:4px">
+                <button onclick="dttTeacherUploadCandidate()" style="padding:4px 10px;background:#3b82f6;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer">📤 上傳圖片</button>
+                <button onclick="dttTeacherClearCandidatePool()" style="padding:4px 10px;background:#fee2e2;color:#b91c1c;border:none;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer">🗑️ 清候選庫</button>
+            </div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;padding:6px;background:#fff;border-radius:6px;min-height:50px">`);
+    if (combined.length === 0) {
+        html.push(`<div style="width:100%;text-align:center;color:#94a3b8;font-size:11px;padding:20px">點「📤 上傳圖片」從電腦加圖，或到上面方法格加圖（會自動加入）</div>`);
+    } else {
+        combined.forEach((it, idx) => {
+            const removeBtn = it.correctMethod === -1
+                ? `<span onclick="dttRemoveCandidate(${idx})" style="position:absolute;top:-6px;right:-6px;background:#ef4444;color:#fff;width:18px;height:18px;border-radius:50%;text-align:center;line-height:18px;font-size:11px;cursor:pointer;font-weight:800">×</span>`
+                : '';
+            const borderColor = it.correctMethod === -1 ? '#fbbf24' : '#cbd5e1';
+            html.push(`<div style="position:relative;display:inline-block">
+                <img class="dtt-draggable" draggable="true" data-pool-idx="${idx}" data-correct-method="${it.correctMethod}" src="${it.src}" onclick="dttShowLightbox('${it.src}')" style="width:80px;height:80px;object-fit:cover;border-radius:6px;cursor:grab;border:2px solid ${borderColor}" title="${dttEsc(it.label)}">
+                ${removeBtn}
+            </div>`);
         });
-        html.push(`</div></div>`);
     }
+    html.push(`</div></div>`);
+    // 移除舊的關閉 html.push(`</div></div>`);
+    // 原本在這裡有 if (allImgs.length > 0) 區塊，已整合到上方
     // 步驟 4：選正確方法（老師自己）
     html.push(`<div style="background:#fef9c3;border:2px solid #fde047;border-radius:12px;padding:12px">
         <div style="font-size:11px;color:#854d0e;font-weight:800;margin-bottom:6px">☑️ 4. 自我決策（老師選正確方法）</div>
@@ -2074,10 +2119,53 @@ function dttTeacherAddImage(kind, methodIdx, dataUrl) {
         box.style.display = '';
         const img = document.createElement('img');
         img.src = dataUrl;
-        img.style.cssText = 'width:36px;height:36px;object-fit:cover;border-radius:3px';
+        img.style.cssText = 'width:90px;height:90px;object-fit:cover;border-radius:6px;cursor:zoom-in';
         box.appendChild(img);
     }
 }
+
+// 老師：上傳圖片到候選答案庫
+window.dttTeacherUploadCandidate = function() {
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = 'image/*'; input.multiple = true;
+    input.onchange = e => {
+        const files = Array.from(e.target.files || []);
+        let loaded = 0;
+        files.forEach(f => {
+            const r = new FileReader();
+            r.onload = ev => {
+                dttCandidatePool.push(ev.target.result);
+                loaded++;
+                if (loaded === files.length) {
+                    showToast(`✅ 已加入 ${files.length} 張圖到候選庫`, 'success');
+                    dttRenderTeacherThink();
+                }
+            };
+            r.readAsDataURL(f);
+        });
+    };
+    input.click();
+};
+
+window.dttRemoveCandidate = function(combinedIdx) {
+    // combined 結構：dttCandidatePool 在前，後面才是 methodImages 的圖
+    // combinedIdx 直接對應 combined 陣列
+    // 我們需要在渲染時用一個 global 對應表
+    // 簡化：直接呼叫 dttRenderTeacherThink 前先更新 underlying arrays
+    // 為簡單起見：combinedIdx 在 dttCandidatePool 範圍內就從 pool 刪
+    // 否則不處理（method 圖由方法格自己的刪除鈕處理）
+    if (combinedIdx < dttCandidatePool.length) {
+        dttCandidatePool.splice(combinedIdx, 1);
+        dttRenderTeacherThink();
+    }
+};
+
+window.dttTeacherClearCandidatePool = function() {
+    if (dttCandidatePool.length === 0) return showToast('候選庫已經是空的', 'info');
+    if (!confirm(`清空候選庫（${dttCandidatePool.length} 張）？`)) return;
+    dttCandidatePool = [];
+    dttRenderTeacherThink();
+};
 
 window.dttTeacherPickCorrect = function(i) {
     if (!dttSession) return;
@@ -2161,33 +2249,64 @@ window.dttPublishFinal = function() {
     if (!dttSession) return;
     closeDttTeacherThink();
     dttStudentAnswers = {};
-    openDttQr();
-    // 打包給學生（簡化版：題目 + 方法含圖 + 後果含圖）
+    // ★ 產生 6 字元題目代碼
+    const code = Math.random().toString(36).slice(2, 8).toUpperCase();
+    // 打包給學生（題目 + 方法文字 + 後果文字；圖另外存進「題目代碼庫」）
     const lite = {
         topic: dttSession.topic,
         q1: stripHtml(dttSession.q1 || ''),
         mc: dttSession.methodCount,
         mn: (dttSession.methodNames || []).map(n => stripHtml(n)),
         mi: (dttSession.methodImgs || []).map(s => stripHtml(s)),
-        miI: (dttSession.methodImages || []).map(arr => arr || []),  // ★ 方法圖（含老師手插的）
+        miI: (dttSession.methodImages || []).map(arr => arr || []),
         ci: (dttSession.conseqTexts || []).map(s => stripHtml(s)),
         ciI: (dttSession.conseqImages || []).map(arr => arr || []),
         cm: dttSession.correctMethod,
-        op: dttSession.openedAt
+        op: dttSession.openedAt,
+        code
     };
+    // ★ 把完整題目（含圖）存進 localStorage 庫，按代碼查
+    try {
+        localStorage.setItem('dtt_code_' + code, JSON.stringify({
+            topic: dttSession.topic,
+            q1: dttSession.q1,
+            mc: dttSession.methodCount,
+            mn: dttSession.methodNames,
+            mi: dttSession.methodImgs,
+            miI: dttSession.methodImages,
+            ci: dttSession.conseqTexts,
+            ciI: dttSession.conseqImages,
+            cm: dttSession.correctMethod,
+            op: dttSession.openedAt,
+            code,
+            roomCode
+        }));
+        showToast('💾 題目代碼：' + code + '（學生輸入此代碼可載入）', 'success', 5000);
+    } catch(e) {
+        console.warn('localStorage 儲存失敗', e);
+    }
+    openDttQr(lite);
+    // 廣播給學生
     dttBroadcast('dtt_publish', lite);
-    showToast('📡 已發佈給學生！', 'success');
+    // 額外多發幾次（處理 SSE 掉線的學生）
+    let count = 0;
+    const repeatIv = setInterval(() => {
+        dttBroadcast('dtt_publish', lite);
+        count++;
+        if (count >= 3) clearInterval(repeatIv);
+    }, 3000);
 };
 
 // ── QR Code 模態 ────────────────────────────────────────────
-function openDttQr() {
+function openDttQr(lite) {
     document.getElementById('dtt-qr-modal').classList.remove('dtt-hidden');
-    // ★ iPad Safari 對長 URL 截斷很敏感 — QR 只帶房號，題目走 ntfy 輪詢
+    // ★ iPad Safari 對長 URL 截斷很敏感 — QR 只帶房號
     const url = location.origin + location.pathname + '?room=' + roomCode + '&role=student';
-    // 同時廣播一次給學生（多通道保險）
-    dttBroadcast('dtt_publish', dttSession);
     document.getElementById('dtt-qr-url').value = url;
-    document.getElementById('dtt-qr-topic').textContent = '🧠 ' + dttSession.topic;
+    document.getElementById('dtt-qr-topic').textContent = '🧠 ' + (lite?.topic || dttSession?.topic || '');
+    // ★ 顯示題目代碼（讓學生手動輸入作為備援）
+    const codeEl = document.getElementById('dtt-qr-code');
+    if (codeEl) codeEl.textContent = lite?.code || '—';
     // QR 圖（主 API + 2 個 fallback）
     const img = document.getElementById('dtt-qr-img');
     const fallback = document.getElementById('dtt-qr-fallback');
@@ -2201,7 +2320,6 @@ function openDttQr() {
         fallback.innerHTML = '⚠️ 無法生成 QR。<br>請用「📋 複製」按鈕把網址傳給學生，或用「📝 複製純文字題目」貼到 LINE。<br><br>學生輸入網址後，按「🔄 載入老師題目」即可。';
     }; };
     img.src = qr1;
-    // 提示學生端可手動載入
     showToast('✅ 已發佈！學生掃碼後按「🔄 載入老師題目」即可', 'success', 3500);
 }
 window.closeDttQr = () => document.getElementById('dtt-qr-modal').classList.add('dtt-hidden');
@@ -2406,52 +2524,121 @@ function dttBroadcast(type, payload) {
 window.studentFetchDtt = async function() {
     const btn = document.getElementById('btn-fetch-dtt');
     if (btn) { btn.disabled = true; btn.innerHTML = '⏳ 載入中…'; }
-    const url = `https://ntfy.sh/cv_rm_${roomCode}/json?since=10m&poll=1`;
+    showToast('🔄 從雲端拉取老師題目…', 'info', 1800);
+    // ★ 策略：先嘗試 SSE（即時等新訊息），若 6 秒內沒拿到，再 fallback GET
+    const sseUrl = `https://ntfy.sh/cv_rm_${roomCode}/sse?since=30m&backfill=all`;
+    let found = null;
     try {
-        showToast('🔄 從雲端拉取老師題目…', 'info', 2000);
-        const resp = await fetch(url);
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        // ntfy json stream 是一行一個 JSON
-        const text = await resp.text();
-        const lines = text.split('\n').filter(Boolean);
-        let found = null;
-        for (const line of lines) {
+        console.log('[DTT] 嘗試 SSE:', sseUrl);
+        const es = new EventSource(sseUrl);
+        const timeout = setTimeout(() => {
+            try { es.close(); } catch(_) {}
+            if (!found) console.warn('[DTT] SSE 6 秒內沒拿到');
+        }, 6000);
+        es.onmessage = e => {
             try {
-                const e = JSON.parse(line);
-                if (e.event === 'message' && e.message) {
-                    const msg = JSON.parse(e.message);
+                const d = JSON.parse(e.data);
+                if (d.event === 'message' && d.message) {
+                    const msg = JSON.parse(d.message);
                     if (msg && msg.type === 'dtt_publish' && msg.payload) {
                         found = msg.payload;
-                        // 取最新一筆
+                        clearTimeout(timeout);
+                        es.close();
+                        dttSession = found;
+                        console.log('[DTT] SSE 拿到題目:', found.topic);
+                        dttEnterStudentView();
                     }
                 }
             } catch(_) {}
-        }
-        if (found) {
-            dttSession = found;
-            if (typeof showDttStudentView === 'function') {
-                if (!localStudent.isLoggedIn) {
-                    // 自動用「訪客」身份登入，繞過輸入姓名
-                    localStudent.name = '訪客_' + Math.random().toString(36).slice(2, 6);
-                    localStudent.isLoggedIn = true;
-                    showStudentWorkspace();
-                    showDttStudentView();
-                    showToast('✅ 自動以訪客身份進入，已載入老師題目', 'success');
-                } else {
-                    showDttStudentView();
-                    showToast('✅ 題目已載入', 'success');
-                }
-            }
-        } else {
-            showToast('⚠️ 找不到老師題目，請確認房號正確或老師已按「確定並發佈」', 'warning', 4000);
-        }
+        };
+        es.onerror = () => {
+            console.warn('[DTT] SSE error');
+            // 不立即關閉，可能會自動重連
+        };
+        // 等 6 秒看 SSE 有沒有拿到
+        await new Promise(r => setTimeout(r, 6500));
+        if (found) return;
+        try { es.close(); } catch(_) {}
     } catch (err) {
-        console.error('studentFetchDtt 失敗', err);
-        showToast('❌ 載入失敗：' + err.message, 'error', 4000);
-    } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = '🔄 載入老師的解難決策題目'; }
+        console.warn('[DTT] SSE 失敗:', err.message);
+    }
+    // ★ SSE 沒拿到 → fallback GET（一次性的歷史）
+    const endpoints = [
+        `https://ntfy.sh/cv_rm_${roomCode}/json?since=30m`,
+        `https://ntfy.sh/cv_rm_${roomCode}/json?since=2h`
+    ];
+    for (let attempt = 0; attempt < endpoints.length; attempt++) {
+        const url = endpoints[attempt];
+        try {
+            console.log('[DTT] GET fallback #' + (attempt+1) + ':', url);
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 4000);
+            const resp = await fetch(url, { signal: ctrl.signal, mode: 'cors', cache: 'no-store' });
+            clearTimeout(timer);
+            if (!resp.ok) { console.warn('[DTT] HTTP', resp.status); continue; }
+            const text = await resp.text();
+            const lines = text.split('\n').filter(Boolean);
+            for (const line of lines) {
+                try {
+                    const e = JSON.parse(line);
+                    if (e.event === 'message' && e.message) {
+                        const msg = JSON.parse(e.message);
+                        if (msg && msg.type === 'dtt_publish' && msg.payload) {
+                            found = msg.payload;
+                        }
+                    }
+                } catch(_) {}
+            }
+            if (found) {
+                console.log('[DTT] GET 拿到題目:', found.topic);
+                dttSession = found;
+                dttEnterStudentView();
+                return;
+            }
+        } catch (err) {
+            console.warn('[DTT] GET fallback #' + (attempt+1) + ' 失敗:', err.message);
+        }
+    }
+    // 全部失敗
+    console.error('[DTT] 全部失敗');
+    showToast('⚠️ 找不到老師題目。請確認房號，或輸入「題目代碼」', 'warning', 5000);
+    if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '🔄 找不到題目，重試';
+        btn.onclick = () => { btn.onclick = null; btn.innerHTML = '🔄 載入老師的解難決策題目'; studentFetchDtt(); };
     }
 };
+
+// 學生輸入題目代碼（同裝置 localStorage 載入）
+window.studentFetchByCode = function() {
+    const code = (document.getElementById('input-dtt-code').value || '').trim().toUpperCase();
+    if (!code) return showToast('請輸入 6 字元題目代碼', 'warning');
+    try {
+        const raw = localStorage.getItem('dtt_code_' + code);
+        if (!raw) return showToast('找不到此代碼的題目（請確認代碼正確）', 'error', 4000);
+        const data = JSON.parse(raw);
+        dttSession = data;
+        console.log('[DTT] 代碼載入:', data.topic);
+        dttEnterStudentView();
+        showToast('✅ 已用代碼載入題目！', 'success');
+    } catch(e) {
+        showToast('❌ 代碼載入失敗：' + e.message, 'error', 4000);
+    }
+};
+
+function dttEnterStudentView() {
+    if (!dttSession) return;
+    if (!localStudent.isLoggedIn) {
+        localStudent.name = '訪客_' + Math.random().toString(36).slice(2, 6);
+        localStudent.isLoggedIn = true;
+        showStudentWorkspace();
+    }
+    // 延遲 50ms 等 DOM ready
+    setTimeout(() => {
+        if (typeof showDttStudentView === 'function') showDttStudentView();
+        showToast('✅ 已載入老師題目！', 'success');
+    }, 50);
+}
 
 // ── 學生端：進入解難決策作答 ──────────────────────────────
 function showDttStudentView() {
@@ -2505,7 +2692,7 @@ function dttRenderStudentForm() {
         const conseqImgs = (s.conseqImages && s.conseqImages[i]) || (s.ciI && s.ciI[i]) || [];
         html.push(`<div class="dtt-student-method" style="background:#f0fdf4;border-color:#bbf7d0">
             <h4 style="color:#15803d">🚪 ${dttEsc(name)} 的後果</h4>
-            ${conseqImgs.length > 0 ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px;padding:4px;background:#fff;border-radius:6px;border:1px solid #bbf7d0">${conseqImgs.map(src => `<img src="${src}" style="width:60px;height:60px;object-fit:cover;border-radius:4px;border:1px solid #cbd5e1">`).join('')}</div>` : ''}
+            ${conseqImgs.length > 0 ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;padding:6px;background:#fff;border-radius:8px;border:1px solid #bbf7d0">${conseqImgs.map(src => `<img src="${src}" onclick="dttShowLightbox('${src}')" style="width:90px;height:90px;object-fit:cover;border-radius:6px;border:2px solid #16a34a;cursor:zoom-in">`).join('')}</div>` : ''}
             <div style="background:#fff;border-radius:8px;padding:8px;font-size:13px;color:#334155;line-height:1.5">${conseqText || '（老師沒填寫後果）'}</div>
         </div>`);
     }
@@ -2514,7 +2701,7 @@ function dttRenderStudentForm() {
     for (let i = 0; i < s.methodCount; i++) {
         const name = s.methodNames[i] || ('方法 ' + (i+1));
         const mImg = ((s.methodImages && s.methodImages[i] && s.methodImages[i][0]) || (s.miI && s.miI[i] && s.miI[i][0]) || '');
-        const mImgHtml = mImg ? `<img src="${mImg}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;margin-bottom:4px">` : `<div style="width:50px;height:50px;border-radius:6px;background:#fef3c7;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:#92400e;margin-bottom:4px">${i+1}</div>`;
+        const mImgHtml = mImg ? `<img src="${mImg}" onclick="dttShowLightbox('${mImg}')" style="width:70px;height:70px;object-fit:cover;border-radius:6px;margin-bottom:4px;cursor:zoom-in;border:2px solid #fbbf24">` : `<div style="width:70px;height:70px;border-radius:6px;background:#fef3c7;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:900;color:#92400e;margin-bottom:4px">${i+1}</div>`;
         choiceBtns.push(`<button type="button" data-method="${i}" onclick="dttPickMethod(${i})"
             class="dtt-choice-btn"
             style="padding:10px 14px;background:#fff;border:3px solid #fde047;border-radius:14px;cursor:pointer;font-weight:800;color:#854d0e;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:100px;transition:all .15s">
