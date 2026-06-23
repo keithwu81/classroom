@@ -75,7 +75,7 @@
     </header>
 
     <!-- 浮動工具列 FAB（老師主控台專用） -->
-    <div id="toolbar-fab" class="fixed bottom-6 right-6 z-[9000] flex flex-col-reverse items-end gap-3 focus-hide" style="display:none">
+    <div id="toolbar-fab" class="fixed bottom-6 right-6 z-[9000] flex flex-col-reverse items-end gap-3" style="display:none">
         <!-- 主按鈕（展開/收合） -->
         <button id="toolbar-main" onclick="toggleToolbar()" title="工具箱"
             class="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-500 hover:from-indigo-400 hover:to-purple-400 text-white shadow-2xl flex flex-col items-center justify-center transition-all hover:scale-110 active:scale-95 ring-4 ring-white">
@@ -279,6 +279,8 @@
                             <p class="text-xs max-w-sm mx-auto">貼上網址載入題目。點擊「👁️ 專注模式」可最大化！</p>
                         </div>
                         <iframe id="presentation-iframe" class="hidden absolute inset-0 w-full h-full bg-white" frameborder="0" allowfullscreen></iframe>
+                        <!-- 電子筆畫布（覆蓋在簡報上，老師可開關） -->
+                        <canvas id="pen-canvas" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:5;cursor:crosshair;display:none"></canvas>
                     </div>
                 </div>
 
@@ -1603,64 +1605,32 @@ window.clearPresentation = function() {
   </div>
 </div>
 
-<!-- 電子筆 modal（老師全屏書寫，學生即時同步） -->
-<div id="pen-modal" class="dtt-modal dtt-hidden" style="align-items:stretch;padding:0">
-  <div style="background:#fff;width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden;border-radius:0">
-    <div class="dtt-header" style="background:linear-gradient(135deg,#8b5cf6,#7c3aed);padding:10px 16px">
-      <h2 style="font-size:16px">✏️ 電子筆 <span id="pen-student-count" style="background:rgba(255,255,255,.25);padding:2px 8px;border-radius:999px;font-size:11px;margin-left:8px">0 人同步中</span></h2>
-      <div style="display:flex;gap:6px;align-items:center">
-        <button onclick="penClose()" class="dtt-close" style="background:rgba(255,255,255,.2);color:#fff">×</button>
-      </div>
-    </div>
-    <!-- 工具列 -->
-    <div id="pen-toolbar" style="background:#faf5ff;padding:8px 12px;border-bottom:1px solid #e9d5ff;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <div style="display:flex;gap:4px;align-items:center">
-        <span style="font-size:11px;color:#6b21a8;font-weight:800">色</span>
-        <button onclick="penSetColor('#000000',this)" class="pen-color-btn" style="width:24px;height:24px;border-radius:50%;background:#000;border:2px solid #fff;box-shadow:0 0 0 2px #7c3aed"></button>
-        <button onclick="penSetColor('#ef4444',this)" class="pen-color-btn" style="width:24px;height:24px;border-radius:50%;background:#ef4444;border:2px solid #fff"></button>
-        <button onclick="penSetColor('#3b82f6',this)" class="pen-color-btn" style="width:24px;height:24px;border-radius:50%;background:#3b82f6;border:2px solid #fff"></button>
-        <button onclick="penSetColor('#10b981',this)" class="pen-color-btn" style="width:24px;height:24px;border-radius:50%;background:#10b981;border:2px solid #fff"></button>
-        <button onclick="penSetColor('#facc15',this)" class="pen-color-btn" style="width:24px;height:24px;border-radius:50%;background:#facc15;border:2px solid #fff"></button>
-        <button onclick="penSetColor('#a855f7',this)" class="pen-color-btn" style="width:24px;height:24px;border-radius:50%;background:#a855f7;border:2px solid #fff"></button>
-      </div>
-      <div style="display:flex;gap:4px;align-items:center">
-        <span style="font-size:11px;color:#6b21a8;font-weight:800">粗</span>
-        <input type="range" id="pen-size" min="1" max="20" value="4" style="width:80px">
-        <span id="pen-size-display" style="font-size:11px;color:#6b21a8;font-weight:800;min-width:18px">4</span>
-      </div>
-      <div style="display:flex;gap:4px;align-items:center">
-        <button onclick="penEraser()" id="pen-eraser-btn" class="dtt-btn dtt-btn-ghost" style="font-size:11px;padding:3px 10px">🧽 橡皮</button>
-        <button onclick="penClear()" class="dtt-btn dtt-btn-ghost" style="font-size:11px;padding:3px 10px">🗑️ 清除</button>
-      </div>
-      <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
-        <label style="font-size:11px;color:#6b21a8;font-weight:800;display:flex;align-items:center;gap:3px;cursor:pointer">
-          <input type="checkbox" id="pen-broadcast-toggle" checked> 📡 同步學生
-        </label>
-      </div>
-    </div>
-    <!-- 畫布 -->
-    <div style="flex:1;position:relative;background:#fff;overflow:hidden">
-      <canvas id="pen-canvas" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair;background:
-        linear-gradient(0deg,transparent 24%,rgba(139,92,246,.05) 25%,rgba(139,92,246,.05) 26%,transparent 27%,transparent 74%,rgba(139,92,246,.05) 75%,rgba(139,92,246,.05) 76%,transparent 77%,transparent),
-        linear-gradient(90deg,transparent 24%,rgba(139,92,246,.05) 25%,rgba(139,92,246,.05) 26%,transparent 27%,transparent 74%,rgba(139,92,246,.05) 75%,rgba(139,92,246,.05) 76%,transparent 77%,transparent);
-        background-size:50px 50px"></canvas>
-    </div>
-  </div>
+<!-- 電子筆浮動工具列（覆蓋在簡報上） -->
+<div id="pen-toolbar-float" class="dtt-hidden" style="position:fixed;top:80px;left:50%;transform:translateX(-50%);z-[9500];background:linear-gradient(135deg,#8b5cf6,#7c3aed);color:#fff;border-radius:14px;padding:8px 12px;display:flex;gap:8px;align-items:center;box-shadow:0 10px 30px rgba(124,58,237,.4);flex-wrap:wrap;max-width:95vw">
+  <span style="font-size:12px;font-weight:900;display:flex;align-items:center;gap:4px">
+    <span class="pen-pulse"></span> ✏️ 電子筆模式
+  </span>
+  <span style="width:1px;height:20px;background:rgba(255,255,255,.3)"></span>
+  <button onclick="penSetColor('#000000',this)" class="pen-color-btn" style="width:24px;height:24px;border-radius:50%;background:#000;border:2px solid #fff;box-shadow:0 0 0 2px #fff"></button>
+  <button onclick="penSetColor('#ef4444',this)" class="pen-color-btn" style="width:24px;height:24px;border-radius:50%;background:#ef4444;border:2px solid #fff"></button>
+  <button onclick="penSetColor('#3b82f6',this)" class="pen-color-btn" style="width:24px;height:24px;border-radius:50%;background:#3b82f6;border:2px solid #fff"></button>
+  <button onclick="penSetColor('#10b981',this)" class="pen-color-btn" style="width:24px;height:24px;border-radius:50%;background:#10b981;border:2px solid #fff"></button>
+  <button onclick="penSetColor('#facc15',this)" class="pen-color-btn" style="width:24px;height:24px;border-radius:50%;background:#facc15;border:2px solid #fff"></button>
+  <button onclick="penSetColor('#ffffff',this)" class="pen-color-btn" style="width:24px;height:24px;border-radius:50%;background:#fff;border:2px solid #fff"></button>
+  <span style="width:1px;height:20px;background:rgba(255,255,255,.3)"></span>
+  <span style="font-size:11px;font-weight:800">粗</span>
+  <input type="range" id="pen-size" min="1" max="20" value="4" style="width:70px;accent-color:#fff">
+  <span style="font-size:11px;font-weight:800;min-width:14px" id="pen-size-display">4</span>
+  <span style="width:1px;height:20px;background:rgba(255,255,255,.3)"></span>
+  <button onclick="penUndo()" class="pen-tool-btn" style="background:rgba(255,255,255,.2);border:none;color:#fff;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer">↶ 復原</button>
+  <button onclick="penClear()" class="pen-tool-btn" style="background:rgba(255,255,255,.2);border:none;color:#fff;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer">🗑️ 全部清除</button>
+  <button onclick="penToggle()" class="pen-tool-btn" style="background:#fff;color:#7c3aed;border:none;padding:4px 12px;border-radius:6px;font-size:11px;font-weight:900;cursor:pointer">✕ 關閉</button>
 </div>
-
-<!-- 學生端電子筆接收（不能自己畫，只能看） -->
-<div id="pen-student-widget" class="dtt-hidden" style="position:fixed;inset:0;z-[8000];background:#fff;display:flex;flex-direction:column">
-  <div style="background:linear-gradient(135deg,#8b5cf6,#7c3aed);color:#fff;padding:10px 16px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
-    <h2 style="font-size:14px;font-weight:900">✏️ 老師的電子筆</h2>
-    <button onclick="penStudentClose()" style="background:rgba(255,255,255,.2);color:#fff;width:28px;height:28px;border-radius:50%;border:none;cursor:pointer;font-size:16px">×</button>
-  </div>
-  <div style="flex:1;position:relative;overflow:hidden">
-    <canvas id="pen-student-canvas" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none;background:#fff"></canvas>
-  </div>
-  <div style="padding:6px 12px;background:#faf5ff;border-top:1px solid #e9d5ff;font-size:11px;color:#6b21a8;font-weight:800;text-align:center">
-    👀 老師正在書寫，無法互動
-  </div>
-</div>
+<style>
+.pen-pulse { width:8px; height:8px; border-radius:50%; background:#fff; box-shadow:0 0 0 0 rgba(255,255,255,.7); animation:penPulse 1.5s infinite; }
+@keyframes penPulse { 0%{box-shadow:0 0 0 0 rgba(255,255,255,.7)} 70%{box-shadow:0 0 0 8px rgba(255,255,255,0)} 100%{box-shadow:0 0 0 0 rgba(255,255,255,0)} }
+.pen-tool-btn:hover { background:rgba(255,255,255,.35) !important; }
+</style>
 
 <script>
 // ═══════════════════════════════════════════════════════════════
@@ -2941,200 +2911,224 @@ document.addEventListener('input', e => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-//  電子筆（Pen）
-//  廣播策略：每筆 stroke 結束時（mouseup）序列化整條 path 廣播
-//  學生端即時重繪；中間過程以本地流暢預覽為主
-//  訊息類型：pen_init / pen_stroke / pen_clear / pen_close
+//  電子筆（Pen）— 直接在簡報上寫，純本地，不廣播
+//  Canvas 覆蓋在 #presentation-iframe 上方，老師可開關書寫模式
+//  書寫內容持久化在 canvas 上（重新整理簡報才會清掉）
 // ═══════════════════════════════════════════════════════════════
-let penState = { color: '#000000', size: 4, eraser: false, drawing: false, currentStroke: null };
-let penStrokes = [];          // 全部已完成的筆觸（老師端本地狀態）
-let penThrottle = null;       // stroke 廣播節流（避免爆量）
-let penStudentStrokes = [];   // 學生端累積收到的筆觸
+let penActive = false;
+let penColor = '#7c3aed';    // 預設紫色（簡報上較醒目）
+let penSize = 4;
+let penDrawing = false;
+let penLastX = 0, penLastY = 0;
+let penStrokes = [];          // 儲存所有筆觸（用於復原）
+let penBound = false;         // 是否已綁定事件
 
-window.openPen = function() {
-    document.getElementById('pen-modal').classList.remove('dtt-hidden');
-    setTimeout(() => {
-        penResizeCanvas('pen-canvas');
-        penInitDrawing('pen-canvas');
-    }, 50);
-    // 通知學生開啟畫面
-    dttBroadcast('pen_init', { ts: Date.now() });
+// 切換電子筆模式
+window.penToggle = function() {
+    if (penActive) penOff(); else penOn();
 };
-window.penClose = function() {
-    document.getElementById('pen-modal').classList.add('dtt-hidden');
-    dttBroadcast('pen_close', {});
+window.penOn = function() {
+    if (currentRole === 'student') return;
+    penActive = true;
+    const cv = document.getElementById('pen-canvas');
+    if (!cv) return;
+    // 設定 canvas 尺寸
+    penFitCanvas();
+    cv.style.display = 'block';
+    cv.style.pointerEvents = 'auto';
+    // 顯示工具列
+    const tb = document.getElementById('pen-toolbar-float');
+    if (tb) tb.classList.remove('dtt-hidden');
+    // 綁事件（只綁一次）
+    if (!penBound) { penBindEvents(); penBound = true; }
+    // 同步目前顏色按鈕的視覺
+    document.querySelectorAll('.pen-color-btn').forEach(b => {
+        b.style.boxShadow = (b.style.backgroundColor === penColorToRgb(penColor)) ? '0 0 0 2px #7c3aed' : '';
+    });
+    showToast('✏️ 電子筆已開啟，在簡報上書寫', 'info', 2000);
 };
+window.penOff = function() {
+    penActive = false;
+    const cv = document.getElementById('pen-canvas');
+    if (cv) {
+        cv.style.pointerEvents = 'none';
+        cv.style.cursor = 'default';
+    }
+    const tb = document.getElementById('pen-toolbar-float');
+    if (tb) tb.classList.add('dtt-hidden');
+};
+// FAB 用的入口（會 toggle）
+window.openPen = function() { penToggle(); };
+window.penClose = function() { penOff(); };
+
+// 調整 canvas 像素尺寸 = 父層尺寸
+function penFitCanvas() {
+    const cv = document.getElementById('pen-canvas');
+    if (!cv) return;
+    const rect = cv.parentElement.getBoundingClientRect();
+    if (cv.width !== rect.width || cv.height !== rect.height) {
+        // 保留現有筆觸
+        const tmp = document.createElement('canvas');
+        tmp.width = cv.width; tmp.height = cv.height;
+        if (cv.width > 0 && cv.height > 0) {
+            try { tmp.getContext('2d').drawImage(cv, 0, 0); } catch(e) {}
+        }
+        cv.width = rect.width;
+        cv.height = rect.height;
+        const cx = cv.getContext('2d');
+        cx.drawImage(tmp, 0, 0);
+    }
+}
+
+function penColorToRgb(c) {
+    // 簡化版：直接用顏色字串比對
+    return c.toLowerCase();
+}
 
 window.penSetColor = function(c, btn) {
-    penState.color = c;
-    penState.eraser = false;
-    document.querySelectorAll('.pen-color-btn').forEach(b => b.style.boxShadow = '');
-    if (btn) btn.style.boxShadow = '0 0 0 2px #7c3aed';
-    const eraser = document.getElementById('pen-eraser-btn');
-    if (eraser) eraser.style.background = '';
-};
-
-window.penEraser = function() {
-    penState.eraser = true;
-    const eraser = document.getElementById('pen-eraser-btn');
-    if (eraser) eraser.style.background = '#fde68a';
-    document.querySelectorAll('.pen-color-btn').forEach(b => b.style.boxShadow = '');
+    penColor = c;
+    document.querySelectorAll('.pen-color-btn').forEach(b => {
+        // 判斷這個按鈕的顏色
+        const bg = b.style.background.replace(/\s/g, '').toLowerCase();
+        const want = c.toLowerCase();
+        // 簡易匹配（黑/紅/藍/綠/黃/白/紫）
+        const isThis = (want.includes('000') && bg.includes('000')) ||
+                       (want.includes('ef4444') && bg.includes('ef4444')) ||
+                       (want.includes('3b82f6') && bg.includes('3b82f6')) ||
+                       (want.includes('10b981') && bg.includes('10b981')) ||
+                       (want.includes('facc15') && bg.includes('facc15')) ||
+                       (want.includes('ffffff') && bg.includes('fff') && bg.includes('fff;')) ||
+                       (want.includes('7c3aed') && bg.includes('7c3aed'));
+        b.style.boxShadow = isThis ? '0 0 0 2px #7c3aed' : '';
+    });
 };
 
 window.penClear = function() {
+    if (!confirm('確定清除所有筆跡？')) return;
+    const cv = document.getElementById('pen-canvas');
+    if (!cv) return;
+    cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
+    penStrokes = [];
+    showToast('已清除筆跡', 'info');
+};
+
+window.penUndo = function() {
+    if (penStrokes.length === 0) return;
+    penStrokes.pop();
+    penRedrawAll();
+};
+
+function penRedrawAll() {
     const cv = document.getElementById('pen-canvas');
     if (!cv) return;
     const cx = cv.getContext('2d');
     cx.clearRect(0, 0, cv.width, cv.height);
-    penStrokes = [];
-    dttBroadcast('pen_clear', {});
-};
-
-function penResizeCanvas(id) {
-    const cv = document.getElementById(id);
-    if (!cv) return;
-    const rect = cv.parentElement.getBoundingClientRect();
-    // 保留現有內容
-    const tmp = document.createElement('canvas');
-    tmp.width = cv.width; tmp.height = cv.height;
-    if (cv.width > 0 && cv.height > 0) {
-        try { tmp.getContext('2d').drawImage(cv, 0, 0); } catch(e) {}
-    }
-    cv.width = rect.width;
-    cv.height = rect.height;
-    cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
-    // 重畫已有筆觸
-    const cx2 = cv.getContext('2d');
-    const strokes = (id === 'pen-canvas') ? penStrokes : penStudentStrokes;
-    if (id === 'pen-canvas') {
-        penRedrawAll(cv);
-    } else {
-        // 學生端：依 canvas 尺寸 scale 重畫
-        const oldW = tmp.width || cv.width;
-        const oldH = tmp.height || cv.height;
-        const sx = cv.width / oldW, sy = cv.height / oldH;
-        cx2.save();
-        cx2.scale(sx, sy);
-        cx2.drawImage(tmp, 0, 0);
-        cx2.restore();
-    }
+    penStrokes.forEach(s => penDrawSingleStroke(cx, s));
 }
 
-function penRedrawAll(cv) {
-    const cx = cv.getContext('2d');
-    cx.fillStyle = '#fff';
-    cx.fillRect(0, 0, cv.width, cv.height);
-    penStrokes.forEach(s => penDrawStroke(cx, s, cv.width, cv.height));
-}
-
-function penDrawStroke(cx, s, w, h) {
-    if (!s.pts || s.pts.length < 1) return;
+function penDrawSingleStroke(cx, stroke) {
+    if (!stroke.pts || stroke.pts.length === 0) return;
     cx.save();
-    cx.lineCap = 'round';
-    cx.lineJoin = 'round';
-    cx.strokeStyle = s.eraser ? '#fff' : s.color;
-    cx.lineWidth = s.size * 2;
-    // 點是 normalized 0-1
-    const pts = s.pts.map(p => [p[0] * w, p[1] * h]);
-    if (pts.length === 1) {
+    cx.lineCap = 'round'; cx.lineJoin = 'round';
+    cx.strokeStyle = stroke.color;
+    cx.lineWidth = stroke.size * 2;
+    if (stroke.pts.length === 1) {
+        cx.fillStyle = stroke.color;
         cx.beginPath();
-        cx.arc(pts[0][0], pts[0][1], s.size, 0, Math.PI * 2);
-        cx.fillStyle = s.eraser ? '#fff' : s.color;
+        cx.arc(stroke.pts[0].x, stroke.pts[0].y, stroke.size, 0, Math.PI * 2);
         cx.fill();
     } else {
         cx.beginPath();
-        cx.moveTo(pts[0][0], pts[0][1]);
-        for (let i = 1; i < pts.length; i++) cx.lineTo(pts[i][0], pts[i][1]);
+        cx.moveTo(stroke.pts[0].x, stroke.pts[0].y);
+        for (let i = 1; i < stroke.pts.length; i++) cx.lineTo(stroke.pts[i].x, stroke.pts[i].y);
         cx.stroke();
     }
     cx.restore();
 }
 
-function penInitDrawing(id) {
-    const cv = document.getElementById(id);
+function penBindEvents() {
+    const cv = document.getElementById('pen-canvas');
     if (!cv) return;
-    const cx = cv.getContext('2d');
-    cx.fillStyle = '#fff';
-    cx.fillRect(0, 0, cv.width, cv.height);
-    let drawing = false, lx = 0, ly = 0, stroke = null;
-    const pos = e => {
+
+    function pos(e) {
         const r = cv.getBoundingClientRect();
         const t = e.touches ? e.touches[0] : e;
-        return [(t.clientX - r.left) / r.width, (t.clientY - r.top) / r.height];
-    };
-    const start = e => {
+        return { x: t.clientX - r.left, y: t.clientY - r.top };
+    }
+
+    function down(e) {
+        if (!penActive) return;
         e.preventDefault();
-        drawing = true;
-        [lx, ly] = pos(e);
-        stroke = {
-            color: penState.color,
-            size: penState.size,
-            eraser: penState.eraser,
-            pts: [[lx, ly]]
-        };
+        e.stopPropagation();
+        penDrawing = true;
+        const p = pos(e);
+        penLastX = p.x; penLastY = p.y;
+        penStrokes.push({ color: penColor, size: penSize, pts: [{ x: p.x, y: p.y }] });
         // 畫第一點
-        cx.fillStyle = stroke.eraser ? '#fff' : stroke.color;
+        const cx = cv.getContext('2d');
+        cx.fillStyle = penColor;
         cx.beginPath();
-        cx.arc(lx * cv.width, ly * cv.height, stroke.size, 0, Math.PI * 2);
+        cx.arc(p.x, p.y, penSize, 0, Math.PI * 2);
         cx.fill();
-    };
-    const move = e => {
-        if (!drawing || !stroke) return;
+    }
+    function move(e) {
+        if (!penActive || !penDrawing) return;
         e.preventDefault();
-        const [x, y] = pos(e);
-        cx.strokeStyle = stroke.eraser ? '#fff' : stroke.color;
-        cx.lineWidth = stroke.size * 2;
+        e.stopPropagation();
+        const p = pos(e);
+        const cx = cv.getContext('2d');
+        cx.strokeStyle = penColor;
+        cx.lineWidth = penSize * 2;
         cx.lineCap = 'round';
         cx.beginPath();
-        cx.moveTo(lx * cv.width, ly * cv.height);
-        cx.lineTo(x * cv.width, y * cv.height);
+        cx.moveTo(penLastX, penLastY);
+        cx.lineTo(p.x, p.y);
         cx.stroke();
-        lx = x; ly = y;
-        stroke.pts.push([x, y]);
-    };
-    const end = () => {
-        if (!drawing) return;
-        drawing = false;
-        if (stroke && stroke.pts.length > 0) {
-            penStrokes.push(stroke);
-            // ★ 廣播（節流 100ms — 避免學生短時間收到太多）
-            if (document.getElementById('pen-broadcast-toggle')?.checked) {
-                if (penThrottle) clearTimeout(penThrottle);
-                penThrottle = setTimeout(() => {
-                    dttBroadcast('pen_stroke', { stroke });
-                    penThrottle = null;
-                }, 100);
-            }
-        }
-        stroke = null;
-    };
-    cv.addEventListener('mousedown', start);
+        penLastX = p.x; penLastY = p.y;
+        const lastStroke = penStrokes[penStrokes.length - 1];
+        if (lastStroke) lastStroke.pts.push({ x: p.x, y: p.y });
+    }
+    function up(e) {
+        if (!penDrawing) return;
+        penDrawing = false;
+    }
+
+    cv.addEventListener('mousedown', down);
     cv.addEventListener('mousemove', move);
-    cv.addEventListener('mouseup', end);
-    cv.addEventListener('mouseleave', end);
-    cv.addEventListener('touchstart', start, { passive: false });
+    cv.addEventListener('mouseup', up);
+    cv.addEventListener('mouseleave', up);
+    cv.addEventListener('touchstart', down, { passive: false });
     cv.addEventListener('touchmove', move, { passive: false });
-    cv.addEventListener('touchend', end);
+    cv.addEventListener('touchend', up);
+
+    // 視窗 resize 時重設 canvas 像素尺寸（保留內容）
+    let resizeTimer = null;
+    window.addEventListener('resize', () => {
+        if (!penActive) return;
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+            const cv = document.getElementById('pen-canvas');
+            if (!cv) return;
+            // 抓當前繪圖快照
+            const snap = document.createElement('canvas');
+            snap.width = cv.width; snap.height = cv.height;
+            snap.getContext('2d').drawImage(cv, 0, 0);
+            // 重設尺寸
+            penFitCanvas();
+            // 重畫所有 strokes（座標以原始 canvas 座標存）
+            penRedrawAll();
+        }, 200);
+    });
 }
 
-// 學生端：接收 pen 訊息
-window.penStudentClose = function() {
-    document.getElementById('pen-student-widget').classList.add('dtt-hidden');
-    penStudentStrokes = [];
-};
-function penStudentShow() {
-    document.getElementById('pen-student-widget').classList.remove('dtt-hidden');
-    setTimeout(() => {
-        const cv = document.getElementById('pen-student-canvas');
-        const rect = cv.parentElement.getBoundingClientRect();
-        cv.width = rect.width;
-        cv.height = rect.height;
-        // 重畫所有收到的 strokes
-        const cx = cv.getContext('2d');
-        cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
-        penStudentStrokes.forEach(s => penDrawStroke(cx, s, cv.width, cv.height));
-    }, 50);
-}
+// 書寫大小 slider
+document.addEventListener('input', e => {
+    if (e.target && e.target.id === 'pen-size') {
+        penSize = parseInt(e.target.value, 10);
+        const sd = document.getElementById('pen-size-display');
+        if (sd) sd.textContent = penSize;
+    }
+});
 
 // ── 計時器 + 抽籤的 SSE 接收（學生端）──
 // 注入到 dttHandleIncoming
@@ -3168,29 +3162,6 @@ function penStudentShow() {
                 lotteryConfetti();
                 setTimeout(() => w.classList.add('dtt-hidden'), 6000);
             }
-        } else if (type === 'pen_init') {
-            // 老師開啟電子筆 → 學生端顯示接收畫面
-            penStudentStrokes = [];
-            penStudentShow();
-        } else if (type === 'pen_stroke') {
-            // 累積 + 重畫
-            if (payload && payload.stroke) {
-                penStudentStrokes.push(payload.stroke);
-                const cv = document.getElementById('pen-student-canvas');
-                if (cv && cv.width > 0) {
-                    penDrawStroke(cv.getContext('2d'), payload.stroke, cv.width, cv.height);
-                }
-            }
-        } else if (type === 'pen_clear') {
-            penStudentStrokes = [];
-            const cv = document.getElementById('pen-student-canvas');
-            if (cv) {
-                cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
-                cv.getContext('2d').fillStyle = '#fff';
-                cv.getContext('2d').fillRect(0, 0, cv.width, cv.height);
-            }
-        } else if (type === 'pen_close') {
-            penStudentClose();
         }
     }
     // 等 dttHandleIncoming 存在後包裝
