@@ -489,7 +489,7 @@ function connectSSE_Teacher() {
         updateStatus('🟢 已連線（即時推送）', 'bg-emerald-500');
         document.getElementById('student-conn-status').innerText = '即時連線中';
         // ★ 老師連線後廣播 TEACHER_READY，讓學生知道可以重送答案
-        ntfySend('TEACHER_READY', { mode: currentMode, labels: { ...custom2Labels } });
+        ntfySend('TEACHER_READY', { mode: currentMode, labels: { ...custom2Labels }, dtt: dttSession || null });
         // ★ 若有 DTT 進行中的 session，重新發佈一次（讓後進來的學生能拿到題目）
         if (dttSession) {
             setTimeout(() => dttBroadcast('dtt_publish', dttSession), 100);
@@ -515,6 +515,10 @@ function connectSSE_Teacher() {
             } else if (msg.type === 'REQ_STATE') {
                 // 學生請求目前題型
                 ntfySend('STATE', { mode: currentMode });
+                // ★ 若有 DTT 進行中的題目，一併發給剛連線的學生
+                if (dttSession) {
+                    setTimeout(() => dttBroadcast('dtt_publish', dttSession), 50);
+                }
             }
         } catch(e2) {}
     };
@@ -560,6 +564,11 @@ function connectSSE_Student() {
             } else if (msg.type === 'TEACHER_READY') {
                 // ★ 老師重新連線了，更新題型並重送未確認的答案
                 applyModeChange(msg.payload.mode, msg.payload);
+                // ★ 若老師帶了 dtt 題目（首次或重發），且本地沒收到過，自動進入
+                if (msg.payload && msg.payload.dtt && !dttSession) {
+                    dttSession = msg.payload.dtt;
+                    showDttStudentView();
+                }
                 if (localStudent.isLoggedIn && localStudent._pendingAns) {
                     // 重送上一個未確認的答案
                     ntfySend('ANS', localStudent._pendingAns);
@@ -585,7 +594,13 @@ function handleBCMessage(data) {
     if (type === 'ANS'   && currentRole !== 'student') writeAnswer(payload);
     if (type === 'STATE' && currentRole === 'student')  applyModeChange(payload.mode, payload);
     if (type === 'CLEAR') executeClear(false);
-    if (type === 'TEACHER_READY' && currentRole === 'student') applyModeChange(payload.mode, payload);
+    if (type === 'TEACHER_READY' && currentRole === 'student') {
+        applyModeChange(payload.mode, payload);
+        if (payload && payload.dtt && !dttSession) {
+            dttSession = payload.dtt;
+            showDttStudentView();
+        }
+    }
     if (type === 'CUSTOM2_LABELS') applyModeChange('custom2', payload);
 }
 
@@ -594,7 +609,10 @@ function ntfySend(type, payload) {
     // 老師→學生：cv_rm_（Room Messages）
     // 學生→老師：cv_rs_（Response Stream）
     // REQ_STATE 是學生發給老師，所以走 cv_rs_
-    const isToStudents = (type === 'STATE' || type === 'CLEAR' || type === 'CUSTOM2_LABELS');
+    // DTT 訊息：dtt_publish / dtt_close / dtt_clear 是老師→學生（走 cv_rm_）
+    //         dtt_submit 是學生→老師（走 cv_rs_）
+    const isToStudents = (type === 'STATE' || type === 'CLEAR' || type === 'CUSTOM2_LABELS'
+                          || type === 'dtt_publish' || type === 'dtt_close' || type === 'dtt_clear');
     const topic  = isToStudents ? `cv_rm_${roomCode}` : `cv_rs_${roomCode}`;
     const msgId  = Math.random().toString(36).substr(2, 10);
     const body   = JSON.stringify({ type, payload, msgId });
@@ -800,6 +818,13 @@ window.loginStudent = function() {
     showToast('歡迎 ' + name + '！', 'success');
     // 登入後請求目前題型
     ntfySend('REQ_STATE', {});
+    // ★ 重試 3 次（間隔 2s）確保一定拿到老師端狀態（包含 DTT 題目）
+    let retry = 0;
+    const retryReq = setInterval(() => {
+        retry++;
+        if (dttSession || retry >= 3) { clearInterval(retryReq); return; }
+        ntfySend('REQ_STATE', {});
+    }, 2000);
     setTimeout(() => dispatchEvent(new Event('resize')), 200);
 };
 
