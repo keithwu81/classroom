@@ -98,6 +98,11 @@
             <span class="text-2xl leading-none">🎰</span>
             <span class="text-[10px] font-black mt-0.5">抽籤</span>
         </button>
+        <button onclick="openPen()" data-tool="pen" title="電子筆"
+            class="tool-fab-btn bg-gradient-to-br from-violet-500 to-purple-500 text-white">
+            <span class="text-2xl leading-none">✏️</span>
+            <span class="text-[10px] font-black mt-0.5">電子筆</span>
+        </button>
         <button onclick="openLinkQr()" data-tool="link" title="連結頁 QR"
             class="tool-fab-btn bg-gradient-to-br from-emerald-500 to-teal-500 text-white">
             <span class="text-2xl leading-none">🔗</span>
@@ -450,13 +455,9 @@ window.addEventListener('load', () => {
     }
 
     if (!isForceStudent) setTimeout(generateQRCode, 300);
-    // 顯示 FAB 工具列（老師全功能、學生顯示計時器/抽籤兩個子按鈕）
+    // 顯示 FAB 工具列（老師全功能；學生端不顯示 FAB — 學生只看老師推送的內容）
     const fab = document.getElementById('toolbar-fab');
-    if (fab) fab.style.display = 'flex';
-    if (isForceStudent) {
-        // 學生端：隱藏解難決策/連結頁（這兩個是老師對學生廣播用的）
-        document.querySelectorAll('#toolbar-fab [data-tool="dtt"], #toolbar-fab [data-tool="link"]').forEach(b => b.style.display = 'none');
-    }
+    if (fab) fab.style.display = isForceStudent ? 'none' : 'flex';
 });
 
 // ── 房號 ──────────────────────────────────────────────────────
@@ -677,10 +678,12 @@ function ntfySend(type, payload) {
     // 老師→學生：cv_rm_（Room Messages）
     // 學生→老師：cv_rs_（Response Stream）
     // REQ_STATE 是學生發給老師，所以走 cv_rs_
-    // DTT 訊息：dtt_publish / dtt_close / dtt_clear 是老師→學生（走 cv_rm_）
-    //         dtt_submit 是學生→老師（走 cv_rs_）
+    // 老師→學生的訊息類型（走 cv_rm_）
+    // 學生→老師的訊息類型：ANS / REQ_STATE / dtt_submit（走 cv_rs_）
     const isToStudents = (type === 'STATE' || type === 'CLEAR' || type === 'CUSTOM2_LABELS'
-                          || type === 'dtt_publish' || type === 'dtt_close' || type === 'dtt_clear');
+                          || type === 'dtt_publish' || type === 'dtt_close' || type === 'dtt_clear'
+                          || type.startsWith('timer_') || type.startsWith('pen_')
+                          || type === 'lottery_pick');
     const topic  = isToStudents ? `cv_rm_${roomCode}` : `cv_rs_${roomCode}`;
     const msgId  = Math.random().toString(36).substr(2, 10);
     const body   = JSON.stringify({ type, payload, msgId });
@@ -1597,6 +1600,65 @@ window.clearPresentation = function() {
       <p id="linkqr-hint" style="font-size:11px;color:#64748b;margin-top:10px">輸入網址後按 Enter 或貼上即顯示 QR Code</p>
       <p id="linkqr-fallback" class="dtt-hidden" style="margin-top:10px;font-size:12px;color:#be123c"></p>
     </div>
+  </div>
+</div>
+
+<!-- 電子筆 modal（老師全屏書寫，學生即時同步） -->
+<div id="pen-modal" class="dtt-modal dtt-hidden" style="align-items:stretch;padding:0">
+  <div style="background:#fff;width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden;border-radius:0">
+    <div class="dtt-header" style="background:linear-gradient(135deg,#8b5cf6,#7c3aed);padding:10px 16px">
+      <h2 style="font-size:16px">✏️ 電子筆 <span id="pen-student-count" style="background:rgba(255,255,255,.25);padding:2px 8px;border-radius:999px;font-size:11px;margin-left:8px">0 人同步中</span></h2>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button onclick="penClose()" class="dtt-close" style="background:rgba(255,255,255,.2);color:#fff">×</button>
+      </div>
+    </div>
+    <!-- 工具列 -->
+    <div id="pen-toolbar" style="background:#faf5ff;padding:8px 12px;border-bottom:1px solid #e9d5ff;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <div style="display:flex;gap:4px;align-items:center">
+        <span style="font-size:11px;color:#6b21a8;font-weight:800">色</span>
+        <button onclick="penSetColor('#000000',this)" class="pen-color-btn" style="width:24px;height:24px;border-radius:50%;background:#000;border:2px solid #fff;box-shadow:0 0 0 2px #7c3aed"></button>
+        <button onclick="penSetColor('#ef4444',this)" class="pen-color-btn" style="width:24px;height:24px;border-radius:50%;background:#ef4444;border:2px solid #fff"></button>
+        <button onclick="penSetColor('#3b82f6',this)" class="pen-color-btn" style="width:24px;height:24px;border-radius:50%;background:#3b82f6;border:2px solid #fff"></button>
+        <button onclick="penSetColor('#10b981',this)" class="pen-color-btn" style="width:24px;height:24px;border-radius:50%;background:#10b981;border:2px solid #fff"></button>
+        <button onclick="penSetColor('#facc15',this)" class="pen-color-btn" style="width:24px;height:24px;border-radius:50%;background:#facc15;border:2px solid #fff"></button>
+        <button onclick="penSetColor('#a855f7',this)" class="pen-color-btn" style="width:24px;height:24px;border-radius:50%;background:#a855f7;border:2px solid #fff"></button>
+      </div>
+      <div style="display:flex;gap:4px;align-items:center">
+        <span style="font-size:11px;color:#6b21a8;font-weight:800">粗</span>
+        <input type="range" id="pen-size" min="1" max="20" value="4" style="width:80px">
+        <span id="pen-size-display" style="font-size:11px;color:#6b21a8;font-weight:800;min-width:18px">4</span>
+      </div>
+      <div style="display:flex;gap:4px;align-items:center">
+        <button onclick="penEraser()" id="pen-eraser-btn" class="dtt-btn dtt-btn-ghost" style="font-size:11px;padding:3px 10px">🧽 橡皮</button>
+        <button onclick="penClear()" class="dtt-btn dtt-btn-ghost" style="font-size:11px;padding:3px 10px">🗑️ 清除</button>
+      </div>
+      <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
+        <label style="font-size:11px;color:#6b21a8;font-weight:800;display:flex;align-items:center;gap:3px;cursor:pointer">
+          <input type="checkbox" id="pen-broadcast-toggle" checked> 📡 同步學生
+        </label>
+      </div>
+    </div>
+    <!-- 畫布 -->
+    <div style="flex:1;position:relative;background:#fff;overflow:hidden">
+      <canvas id="pen-canvas" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair;background:
+        linear-gradient(0deg,transparent 24%,rgba(139,92,246,.05) 25%,rgba(139,92,246,.05) 26%,transparent 27%,transparent 74%,rgba(139,92,246,.05) 75%,rgba(139,92,246,.05) 76%,transparent 77%,transparent),
+        linear-gradient(90deg,transparent 24%,rgba(139,92,246,.05) 25%,rgba(139,92,246,.05) 26%,transparent 27%,transparent 74%,rgba(139,92,246,.05) 75%,rgba(139,92,246,.05) 76%,transparent 77%,transparent);
+        background-size:50px 50px"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- 學生端電子筆接收（不能自己畫，只能看） -->
+<div id="pen-student-widget" class="dtt-hidden" style="position:fixed;inset:0;z-[8000];background:#fff;display:flex;flex-direction:column">
+  <div style="background:linear-gradient(135deg,#8b5cf6,#7c3aed);color:#fff;padding:10px 16px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
+    <h2 style="font-size:14px;font-weight:900">✏️ 老師的電子筆</h2>
+    <button onclick="penStudentClose()" style="background:rgba(255,255,255,.2);color:#fff;width:28px;height:28px;border-radius:50%;border:none;cursor:pointer;font-size:16px">×</button>
+  </div>
+  <div style="flex:1;position:relative;overflow:hidden">
+    <canvas id="pen-student-canvas" style="position:absolute;inset:0;width:100%;height:100%;touch-action:none;background:#fff"></canvas>
+  </div>
+  <div style="padding:6px 12px;background:#faf5ff;border-top:1px solid #e9d5ff;font-size:11px;color:#6b21a8;font-weight:800;text-align:center">
+    👀 老師正在書寫，無法互動
   </div>
 </div>
 
@@ -2655,15 +2717,16 @@ window.toggleToolbar = function() {
 };
 
 // ── 計時器 ──────────────────────────────────────────────────
-let timerState = { total: 300, remain: 300, running: false, lastTick: 0 };
+let timerState = { total: 300, remain: 300, running: false };
 let timerInterval = null;
 
 window.openTimer = function() { document.getElementById('timer-modal').classList.remove('dtt-hidden'); timerRender(); };
 window.closeTimer = function() { document.getElementById('timer-modal').classList.add('dtt-hidden'); };
 
 function timerRender() {
-    const m = Math.floor(timerState.remain / 60);
-    const s = timerState.remain % 60;
+    const r = Math.max(0, Math.round(timerState.remain));   // ★ 整數秒
+    const m = Math.floor(r / 60);
+    const s = r % 60;
     const txt = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
     document.getElementById('timer-display').textContent = txt;
     document.getElementById('timer-status').textContent =
@@ -2676,36 +2739,30 @@ function timerRender() {
 }
 
 window.timerSet = function(sec) {
-    timerState.total = sec;
-    timerState.remain = sec;
+    timerState.total = Math.round(sec);
+    timerState.remain = Math.round(sec);
     timerState.running = false;
     if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
     timerRender();
-    dttBroadcast('timer_set', { total: sec });
+    dttBroadcast('timer_set', { total: timerState.total });
 };
 
 window.timerStart = function() {
     if (timerState.remain <= 0) timerState.remain = timerState.total;
     timerState.running = true;
-    timerState.lastTick = Date.now();
-    dttBroadcast('timer_start', { remain: timerState.remain });
+    dttBroadcast('timer_start', { remain: Math.round(timerState.remain) });
     if (timerInterval) clearInterval(timerInterval);
     timerInterval = setInterval(() => {
-        const now = Date.now();
-        const dt = (now - timerState.lastTick) / 1000;
-        timerState.lastTick = now;
-        timerState.remain = Math.max(0, timerState.remain - dt);
+        timerState.remain -= 1;   // ★ 每秒減 1（整數）
         if (timerState.remain <= 0) {
             timerState.remain = 0;
             timerState.running = false;
             clearInterval(timerInterval); timerInterval = null;
-            // 提示音
             try { beep(); } catch(e) {}
             dttBroadcast('timer_reset', { total: timerState.total });
             showToast('⏰ 時間到！', 'warning', 5000);
         } else {
-            // 每秒廣播一次給學生
-            dttBroadcast('timer_tick', { remain: Math.ceil(timerState.remain), running: true });
+            dttBroadcast('timer_tick', { remain: timerState.remain, running: true });
         }
         timerRender();
     }, 1000);
@@ -2715,7 +2772,7 @@ window.timerStart = function() {
 window.timerPause = function() {
     timerState.running = false;
     if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
-    dttBroadcast('timer_pause', { remain: Math.ceil(timerState.remain) });
+    dttBroadcast('timer_pause', { remain: Math.round(timerState.remain) });
     timerRender();
 };
 
@@ -2876,7 +2933,208 @@ function linkqrUpdate() {
 document.addEventListener('input', e => {
     if (e.target && e.target.id === 'linkqr-url') linkqrUpdate();
     if (e.target && e.target.id === 'lottery-names') lotteryUpdateCount();
+    if (e.target && e.target.id === 'pen-size') {
+        penState.size = parseInt(e.target.value, 10);
+        const sd = document.getElementById('pen-size-display');
+        if (sd) sd.textContent = penState.size;
+    }
 });
+
+// ═══════════════════════════════════════════════════════════════
+//  電子筆（Pen）
+//  廣播策略：每筆 stroke 結束時（mouseup）序列化整條 path 廣播
+//  學生端即時重繪；中間過程以本地流暢預覽為主
+//  訊息類型：pen_init / pen_stroke / pen_clear / pen_close
+// ═══════════════════════════════════════════════════════════════
+let penState = { color: '#000000', size: 4, eraser: false, drawing: false, currentStroke: null };
+let penStrokes = [];          // 全部已完成的筆觸（老師端本地狀態）
+let penThrottle = null;       // stroke 廣播節流（避免爆量）
+let penStudentStrokes = [];   // 學生端累積收到的筆觸
+
+window.openPen = function() {
+    document.getElementById('pen-modal').classList.remove('dtt-hidden');
+    setTimeout(() => {
+        penResizeCanvas('pen-canvas');
+        penInitDrawing('pen-canvas');
+    }, 50);
+    // 通知學生開啟畫面
+    dttBroadcast('pen_init', { ts: Date.now() });
+};
+window.penClose = function() {
+    document.getElementById('pen-modal').classList.add('dtt-hidden');
+    dttBroadcast('pen_close', {});
+};
+
+window.penSetColor = function(c, btn) {
+    penState.color = c;
+    penState.eraser = false;
+    document.querySelectorAll('.pen-color-btn').forEach(b => b.style.boxShadow = '');
+    if (btn) btn.style.boxShadow = '0 0 0 2px #7c3aed';
+    const eraser = document.getElementById('pen-eraser-btn');
+    if (eraser) eraser.style.background = '';
+};
+
+window.penEraser = function() {
+    penState.eraser = true;
+    const eraser = document.getElementById('pen-eraser-btn');
+    if (eraser) eraser.style.background = '#fde68a';
+    document.querySelectorAll('.pen-color-btn').forEach(b => b.style.boxShadow = '');
+};
+
+window.penClear = function() {
+    const cv = document.getElementById('pen-canvas');
+    if (!cv) return;
+    const cx = cv.getContext('2d');
+    cx.clearRect(0, 0, cv.width, cv.height);
+    penStrokes = [];
+    dttBroadcast('pen_clear', {});
+};
+
+function penResizeCanvas(id) {
+    const cv = document.getElementById(id);
+    if (!cv) return;
+    const rect = cv.parentElement.getBoundingClientRect();
+    // 保留現有內容
+    const tmp = document.createElement('canvas');
+    tmp.width = cv.width; tmp.height = cv.height;
+    if (cv.width > 0 && cv.height > 0) {
+        try { tmp.getContext('2d').drawImage(cv, 0, 0); } catch(e) {}
+    }
+    cv.width = rect.width;
+    cv.height = rect.height;
+    cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
+    // 重畫已有筆觸
+    const cx2 = cv.getContext('2d');
+    const strokes = (id === 'pen-canvas') ? penStrokes : penStudentStrokes;
+    if (id === 'pen-canvas') {
+        penRedrawAll(cv);
+    } else {
+        // 學生端：依 canvas 尺寸 scale 重畫
+        const oldW = tmp.width || cv.width;
+        const oldH = tmp.height || cv.height;
+        const sx = cv.width / oldW, sy = cv.height / oldH;
+        cx2.save();
+        cx2.scale(sx, sy);
+        cx2.drawImage(tmp, 0, 0);
+        cx2.restore();
+    }
+}
+
+function penRedrawAll(cv) {
+    const cx = cv.getContext('2d');
+    cx.fillStyle = '#fff';
+    cx.fillRect(0, 0, cv.width, cv.height);
+    penStrokes.forEach(s => penDrawStroke(cx, s, cv.width, cv.height));
+}
+
+function penDrawStroke(cx, s, w, h) {
+    if (!s.pts || s.pts.length < 1) return;
+    cx.save();
+    cx.lineCap = 'round';
+    cx.lineJoin = 'round';
+    cx.strokeStyle = s.eraser ? '#fff' : s.color;
+    cx.lineWidth = s.size * 2;
+    // 點是 normalized 0-1
+    const pts = s.pts.map(p => [p[0] * w, p[1] * h]);
+    if (pts.length === 1) {
+        cx.beginPath();
+        cx.arc(pts[0][0], pts[0][1], s.size, 0, Math.PI * 2);
+        cx.fillStyle = s.eraser ? '#fff' : s.color;
+        cx.fill();
+    } else {
+        cx.beginPath();
+        cx.moveTo(pts[0][0], pts[0][1]);
+        for (let i = 1; i < pts.length; i++) cx.lineTo(pts[i][0], pts[i][1]);
+        cx.stroke();
+    }
+    cx.restore();
+}
+
+function penInitDrawing(id) {
+    const cv = document.getElementById(id);
+    if (!cv) return;
+    const cx = cv.getContext('2d');
+    cx.fillStyle = '#fff';
+    cx.fillRect(0, 0, cv.width, cv.height);
+    let drawing = false, lx = 0, ly = 0, stroke = null;
+    const pos = e => {
+        const r = cv.getBoundingClientRect();
+        const t = e.touches ? e.touches[0] : e;
+        return [(t.clientX - r.left) / r.width, (t.clientY - r.top) / r.height];
+    };
+    const start = e => {
+        e.preventDefault();
+        drawing = true;
+        [lx, ly] = pos(e);
+        stroke = {
+            color: penState.color,
+            size: penState.size,
+            eraser: penState.eraser,
+            pts: [[lx, ly]]
+        };
+        // 畫第一點
+        cx.fillStyle = stroke.eraser ? '#fff' : stroke.color;
+        cx.beginPath();
+        cx.arc(lx * cv.width, ly * cv.height, stroke.size, 0, Math.PI * 2);
+        cx.fill();
+    };
+    const move = e => {
+        if (!drawing || !stroke) return;
+        e.preventDefault();
+        const [x, y] = pos(e);
+        cx.strokeStyle = stroke.eraser ? '#fff' : stroke.color;
+        cx.lineWidth = stroke.size * 2;
+        cx.lineCap = 'round';
+        cx.beginPath();
+        cx.moveTo(lx * cv.width, ly * cv.height);
+        cx.lineTo(x * cv.width, y * cv.height);
+        cx.stroke();
+        lx = x; ly = y;
+        stroke.pts.push([x, y]);
+    };
+    const end = () => {
+        if (!drawing) return;
+        drawing = false;
+        if (stroke && stroke.pts.length > 0) {
+            penStrokes.push(stroke);
+            // ★ 廣播（節流 100ms — 避免學生短時間收到太多）
+            if (document.getElementById('pen-broadcast-toggle')?.checked) {
+                if (penThrottle) clearTimeout(penThrottle);
+                penThrottle = setTimeout(() => {
+                    dttBroadcast('pen_stroke', { stroke });
+                    penThrottle = null;
+                }, 100);
+            }
+        }
+        stroke = null;
+    };
+    cv.addEventListener('mousedown', start);
+    cv.addEventListener('mousemove', move);
+    cv.addEventListener('mouseup', end);
+    cv.addEventListener('mouseleave', end);
+    cv.addEventListener('touchstart', start, { passive: false });
+    cv.addEventListener('touchmove', move, { passive: false });
+    cv.addEventListener('touchend', end);
+}
+
+// 學生端：接收 pen 訊息
+window.penStudentClose = function() {
+    document.getElementById('pen-student-widget').classList.add('dtt-hidden');
+    penStudentStrokes = [];
+};
+function penStudentShow() {
+    document.getElementById('pen-student-widget').classList.remove('dtt-hidden');
+    setTimeout(() => {
+        const cv = document.getElementById('pen-student-canvas');
+        const rect = cv.parentElement.getBoundingClientRect();
+        cv.width = rect.width;
+        cv.height = rect.height;
+        // 重畫所有收到的 strokes
+        const cx = cv.getContext('2d');
+        cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
+        penStudentStrokes.forEach(s => penDrawStroke(cx, s, cv.width, cv.height));
+    }, 50);
+}
 
 // ── 計時器 + 抽籤的 SSE 接收（學生端）──
 // 注入到 dttHandleIncoming
@@ -2910,6 +3168,29 @@ document.addEventListener('input', e => {
                 lotteryConfetti();
                 setTimeout(() => w.classList.add('dtt-hidden'), 6000);
             }
+        } else if (type === 'pen_init') {
+            // 老師開啟電子筆 → 學生端顯示接收畫面
+            penStudentStrokes = [];
+            penStudentShow();
+        } else if (type === 'pen_stroke') {
+            // 累積 + 重畫
+            if (payload && payload.stroke) {
+                penStudentStrokes.push(payload.stroke);
+                const cv = document.getElementById('pen-student-canvas');
+                if (cv && cv.width > 0) {
+                    penDrawStroke(cv.getContext('2d'), payload.stroke, cv.width, cv.height);
+                }
+            }
+        } else if (type === 'pen_clear') {
+            penStudentStrokes = [];
+            const cv = document.getElementById('pen-student-canvas');
+            if (cv) {
+                cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
+                cv.getContext('2d').fillStyle = '#fff';
+                cv.getContext('2d').fillRect(0, 0, cv.width, cv.height);
+            }
+        } else if (type === 'pen_close') {
+            penStudentClose();
         }
     }
     // 等 dttHandleIncoming 存在後包裝
