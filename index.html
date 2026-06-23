@@ -1956,41 +1956,65 @@ function dttRenderTeacherThink() {
         <div style="font-size:11px;color:#be123c;font-weight:800;margin-bottom:4px">🔒 1. 啟發思考</div>
         <div style="font-size:16px;color:#881337;font-weight:700;line-height:1.5">${s.q1 || s.topic}</div>
     </div>`);
-    // 方法（顯示，可拖拉候選圖）
+    // 候選答案庫（先記錄，供後面渲染方法+後果區使用）
     const allImgs = [];
     s.methodImages.forEach((arr, mi) => (arr || []).forEach(src => allImgs.push({ src, method: mi, label: s.methodNames[mi] })));
-    html.push(`<div style="display:flex;gap:6px;margin-bottom:10px">`);
-    for (let i = 0; i < s.methodCount; i++) {
-        const name = s.methodNames[i] || ('方法 ' + (i+1));
-        const preset = s.methodImgs[i] || '';
-        html.push(`<div style="flex:1;background:#fdf2f8;border:2px solid #fbcfe8;border-radius:10px;padding:8px">
-            <div style="font-size:11px;color:#9d174d;font-weight:800;text-align:center;margin-bottom:6px">🗝️ 2.${i+1} ${dttEsc(name)}</div>
-            <div style="font-size:11px;color:#831843;line-height:1.4;margin-bottom:4px">${stripHtml(preset) || '—'}</div>
-        </div>`);
-    }
-    html.push(`</div>`);
-    // 後果（含 dropzone，可拖拉候選圖）
-    html.push(`<div style="background:#f0fdf4;border:2px solid #bbf7d0;border-radius:12px;padding:12px;margin-bottom:10px">
-        <div style="font-size:11px;color:#15803d;font-weight:800;margin-bottom:6px">🚪 3. 思考後果</div>
+    // 步驟2：方法（每格含 dropzone，可拖拉電腦圖或候選庫）
+    html.push(`<div style="background:#fdf2f8;border:2px solid #fbcfe8;border-radius:12px;padding:12px;margin-bottom:10px">
+        <div style="font-size:11px;color:#9d174d;font-weight:800;margin-bottom:6px">🗝️ 2. 提出方法（可手插圖）</div>
         <div style="display:flex;gap:6px">`);
     for (let i = 0; i < s.methodCount; i++) {
         const name = s.methodNames[i] || ('方法 ' + (i+1));
-        const conseqText = s.conseqTexts[i] || '';
-        const conseqImgs = (s.conseqImages && s.conseqImages[i]) || [];
-        html.push(`<div style="flex:1;background:#fff;border:1px solid #d1fae5;border-radius:8px;padding:6px">
-            <div style="font-size:10px;color:#15803d;font-weight:800;text-align:center;margin-bottom:4px">${dttEsc(name)} 的後果</div>
-            ${conseqImgs.length > 0 ? `<div style="display:flex;gap:3px;flex-wrap:wrap;margin-bottom:4px">${conseqImgs.map(src => `<img src="${src}" style="width:36px;height:36px;object-fit:cover;border-radius:3px">`).join('')}</div>` : ''}
-            <div style="font-size:11px;color:#334155;line-height:1.4;margin-bottom:4px">${stripHtml(conseqText) || '—'}</div>
-            <div class="dtt-dropzone dtt-think-drop" data-method="${i}" style="margin-top:4px;padding:4px;border:2px dashed #94a3b8;border-radius:6px;background:#f8fafc;min-height:50px;display:flex;flex-wrap:wrap;gap:3px;align-content:flex-start">
-                <div style="font-size:9px;color:#94a3b8;font-weight:800;width:100%">⬇ 拖圖</div>
+        const preset = s.methodImgs[i] || '';
+        // 老師已插的圖（從 dttSession.methodImages[i] 讀出來）
+        const mImgs = (s.methodImages && s.methodImages[i]) || [];
+        const mImgsHtml = mImgs.length > 0
+            ? `<div class="dtt-think-method-imgs" data-method="${i}" style="display:flex;gap:3px;flex-wrap:wrap;margin-bottom:4px">${mImgs.map(src => `<img src="${src}" style="width:36px;height:36px;object-fit:cover;border-radius:3px">`).join('')}</div>`
+            : `<div class="dtt-think-method-imgs" data-method="${i}" style="display:none"></div>`;
+        html.push(`<div style="flex:1;background:#fff;border:1px solid #fbcfe8;border-radius:8px;padding:6px">
+            <div style="font-size:10px;color:#9d174d;font-weight:800;text-align:center;margin-bottom:4px">方法 ${i+1}：${dttEsc(name)}</div>
+            ${mImgsHtml}
+            <div style="font-size:11px;color:#831843;line-height:1.4;margin-bottom:4px">${stripHtml(preset) || '—'}</div>
+            <div class="dtt-dropzone dtt-think-drop dtt-think-drop-method" data-kind="method" data-method="${i}"
+                style="padding:6px;border:2px dashed #f9a8d4;border-radius:6px;background:#fdf2f8;min-height:44px;display:flex;flex-wrap:wrap;gap:3px;align-content:center;justify-content:center;cursor:pointer"
+                ondragover="event.preventDefault();this.style.background='#fce7f3';this.style.borderColor='#ec4899'"
+                ondragleave="this.style.background='#fdf2f8';this.style.borderColor='#f9a8d4'"
+                onclick="dttTeacherAddImgFromPC('method', ${i})">
+                <span style="font-size:10px;color:#9d174d;font-weight:800">📷 拖圖或點此加圖</span>
             </div>
         </div>`);
     }
     html.push(`</div></div>`);
-    // 候選圖庫
+    // 步驟3：後果（含 dropzone，可拖拉電腦圖或候選庫）
+    html.push(`<div style="background:#f0fdf4;border:2px solid #bbf7d0;border-radius:12px;padding:12px;margin-bottom:10px">
+        <div style="font-size:11px;color:#15803d;font-weight:800;margin-bottom:6px">🚪 3. 思考後果（可手插圖）</div>
+        <div style="display:flex;gap:6px">`);
+    for (let i = 0; i < s.methodCount; i++) {
+        const name = s.methodNames[i] || ('方法 ' + (i+1));
+        const conseqText = s.conseqTexts[i] || '';
+        // 已插的後果圖
+        const cImgs = (s.conseqImages && s.conseqImages[i]) || [];
+        const cImgsHtml = cImgs.length > 0
+            ? `<div class="dtt-think-conseq-imgs" data-method="${i}" style="display:flex;gap:3px;flex-wrap:wrap;margin-bottom:4px">${cImgs.map(src => `<img src="${src}" style="width:36px;height:36px;object-fit:cover;border-radius:3px">`).join('')}</div>`
+            : `<div class="dtt-think-conseq-imgs" data-method="${i}" style="display:none"></div>`;
+        html.push(`<div style="flex:1;background:#fff;border:1px solid #d1fae5;border-radius:8px;padding:6px">
+            <div style="font-size:10px;color:#15803d;font-weight:800;text-align:center;margin-bottom:4px">${dttEsc(name)} 的後果</div>
+            ${cImgsHtml}
+            <div style="font-size:11px;color:#334155;line-height:1.4;margin-bottom:4px">${stripHtml(conseqText) || '—'}</div>
+            <div class="dtt-dropzone dtt-think-drop dtt-think-drop-conseq" data-kind="conseq" data-method="${i}"
+                style="padding:6px;border:2px dashed #86efac;border-radius:6px;background:#f0fdf4;min-height:44px;display:flex;flex-wrap:wrap;gap:3px;align-content:center;justify-content:center;cursor:pointer"
+                ondragover="event.preventDefault();this.style.background='#dcfce7';this.style.borderColor='#16a34a'"
+                ondragleave="this.style.background='#f0fdf4';this.style.borderColor='#86efac'"
+                onclick="dttTeacherAddImgFromPC('conseq', ${i})">
+                <span style="font-size:10px;color:#15803d;font-weight:800">📷 拖圖或點此加圖</span>
+            </div>
+        </div>`);
+    }
+    html.push(`</div></div>`);
+    // 候選圖庫（從老師預填的 methodImages 中）
     if (allImgs.length > 0) {
         html.push(`<div style="background:#eff6ff;border:2px solid #bfdbfe;border-radius:12px;padding:10px;margin-bottom:10px">
-            <div style="font-size:11px;color:#1d4ed8;font-weight:800;margin-bottom:6px">🎯 候選答案庫（拖拉到上面的「後果」格）</div>
+            <div style="font-size:11px;color:#1d4ed8;font-weight:800;margin-bottom:6px">🎯 候選答案庫（拖拉到上面任一格）</div>
             <div style="display:flex;flex-wrap:wrap;gap:4px;padding:6px;background:#fff;border-radius:6px">`);
         allImgs.forEach((it, idx) => {
             html.push(`<img class="dtt-draggable" draggable="true" data-pool-idx="${idx}" data-correct-method="${it.method}" src="${it.src}" style="width:50px;height:50px;object-fit:cover;border-radius:4px;cursor:grab;border:2px solid #cbd5e1">`);
@@ -2013,8 +2037,46 @@ function dttRenderTeacherThink() {
     }
     html.push(`</div></div>`);
     document.getElementById('dtt-teacher-think-body').innerHTML = html.join('');
-    // 綁拖拉事件
+    // 綁拖拉事件（所有 dtt-think-drop，含方法和後果）
     setTimeout(dttBindTeacherDragDrop, 50);
+}
+
+// 老師從電腦選檔案加圖（點 dropzone 觸發）
+window.dttTeacherAddImgFromPC = function(kind, methodIdx) {
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = 'image/*';
+    input.onchange = e => {
+        const f = e.target.files[0]; if (!f) return;
+        const r = new FileReader();
+        r.onload = ev => dttTeacherAddImage(kind, methodIdx, ev.target.result);
+        r.readAsDataURL(f);
+    };
+    input.click();
+};
+
+// 把圖加入 session（kind: method/conseq, idx: 方法 index, dataUrl: base64）
+function dttTeacherAddImage(kind, methodIdx, dataUrl) {
+    if (!dttSession) return;
+    // 確保 array 存在
+    if (kind === 'method') {
+        if (!dttSession.methodImages) dttSession.methodImages = [];
+        if (!dttSession.methodImages[methodIdx]) dttSession.methodImages[methodIdx] = [];
+    } else {
+        if (!dttSession.conseqImages) dttSession.conseqImages = [];
+        if (!dttSession.conseqImages[methodIdx]) dttSession.conseqImages[methodIdx] = [];
+    }
+    const arr = (kind === 'method' ? dttSession.methodImages : dttSession.conseqImages)[methodIdx];
+    arr.push(dataUrl);
+    // 更新該格的圖示區
+    const sel = kind === 'method' ? `.dtt-think-method-imgs[data-method="${methodIdx}"]` : `.dtt-think-conseq-imgs[data-method="${methodIdx}"]`;
+    const box = document.querySelector(sel);
+    if (box) {
+        box.style.display = '';
+        const img = document.createElement('img');
+        img.src = dataUrl;
+        img.style.cssText = 'width:36px;height:36px;object-fit:cover;border-radius:3px';
+        box.appendChild(img);
+    }
 }
 
 window.dttTeacherPickCorrect = function(i) {
@@ -2033,6 +2095,7 @@ window.dttTeacherPickCorrect = function(i) {
 let dttTeacherSelectedTile = null;
 function dttBindTeacherDragDrop() {
     let dragSrc = null;
+    // 候選庫拖曳
     document.querySelectorAll('#dtt-teacher-think-body .dtt-draggable').forEach(img => {
         img.addEventListener('dragstart', e => {
             dragSrc = { poolIdx: img.dataset.poolIdx, correctMethod: img.dataset.correctMethod, src: img.src };
@@ -2043,23 +2106,42 @@ function dttBindTeacherDragDrop() {
             img.style.outline = '4px solid #f59e0b';
         });
     });
-    document.querySelectorAll('.dtt-think-drop').forEach(zone => {
-        zone.addEventListener('dragover', e => { e.preventDefault(); zone.style.background = '#fef9c3'; });
-        zone.addEventListener('dragleave', () => { zone.style.background = '#f8fafc'; });
+    // 所有 dropzone（含方法、後果）
+    document.querySelectorAll('#dtt-teacher-think-body .dtt-think-drop').forEach(zone => {
+        const kind = zone.dataset.kind;        // 'method' 或 'conseq'
+        const methodIdx = parseInt(zone.dataset.method, 10);
+        // 防止內聯 ondragover 重複觸發（保留原本的拖曳視覺）
+        // 拖進來
+        zone.addEventListener('dragenter', e => {
+            e.preventDefault();
+            // 視覺（內聯 ondragover 已處理，這裡不重複）
+        });
         zone.addEventListener('drop', e => {
-            e.preventDefault(); zone.style.background = '#f8fafc';
+            e.preventDefault();
+            // 1) 電腦直接拖入的檔案
+            if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+                for (const f of e.dataTransfer.files) {
+                    if (f.type.startsWith('image/')) {
+                        const reader = new FileReader();
+                        reader.onload = ev => dttTeacherAddImage(kind, methodIdx, ev.target.result);
+                        reader.readAsDataURL(f);
+                    }
+                }
+                return;
+            }
+            // 2) 候選庫拖入
             const data = dragSrc;
             if (!data) return;
             const tile = document.querySelector(`#dtt-teacher-think-body .dtt-draggable[data-pool-idx="${data.poolIdx}"]`);
             const src = tile ? tile.src : data.src;
             const correctMethod = tile ? tile.dataset.correctMethod : data.correctMethod;
-            const targetMethod = zone.dataset.method;
-            const correct = (correctMethod === targetMethod);
+            const correct = (correctMethod === methodIdx);
             const thumb = document.createElement('div');
             thumb.style.cssText = `position:relative;width:40px;height:40px;border-radius:4px;border:2px solid ${correct ? '#10b981' : '#ef4444'};background:#fff`;
             thumb.innerHTML = `<img src="${src}" style="width:100%;height:100%;object-fit:cover;border-radius:3px"><span onclick="this.parentNode.remove()" style="position:absolute;top:-6px;right:-6px;background:#64748b;color:#fff;width:14px;height:14px;border-radius:50%;text-align:center;line-height:14px;font-size:9px;cursor:pointer;font-weight:800">×</span>`;
             zone.appendChild(thumb);
         });
+        // 點擊選取庫 tile 後再點框
         zone.addEventListener('click', () => {
             if (!dttTeacherSelectedTile) return;
             const tile = document.querySelector(`#dtt-teacher-think-body .dtt-draggable[data-pool-idx="${dttTeacherSelectedTile.poolIdx}"]`);
@@ -2080,19 +2162,19 @@ window.dttPublishFinal = function() {
     closeDttTeacherThink();
     dttStudentAnswers = {};
     openDttQr();
-    // 打包給學生（簡化版：題目 + 方法 + 後果，不含候選圖庫、不含拖拉 UI）
+    // 打包給學生（簡化版：題目 + 方法含圖 + 後果含圖）
     const lite = {
         topic: dttSession.topic,
         q1: stripHtml(dttSession.q1 || ''),
         mc: dttSession.methodCount,
         mn: (dttSession.methodNames || []).map(n => stripHtml(n)),
         mi: (dttSession.methodImgs || []).map(s => stripHtml(s)),
+        miI: (dttSession.methodImages || []).map(arr => arr || []),  // ★ 方法圖（含老師手插的）
         ci: (dttSession.conseqTexts || []).map(s => stripHtml(s)),
-        ciI: (dttSession.conseqImages || []).map(arr => arr || []),  // 保留後果圖（學生端可顯示）
+        ciI: (dttSession.conseqImages || []).map(arr => arr || []),
         cm: dttSession.correctMethod,
         op: dttSession.openedAt
     };
-    // 廣播給學生（lite 版）
     dttBroadcast('dtt_publish', lite);
     showToast('📡 已發佈給學生！', 'success');
 };
@@ -2374,25 +2456,34 @@ window.studentFetchDtt = async function() {
 // ── 學生端：進入解難決策作答 ──────────────────────────────
 function showDttStudentView() {
     if (!dttSession) return;
-    // 先把所有原生 mode 隱藏
+    // 先把所有原生 mode 隱藏（用 Tailwind hidden）
     ['mode-waiting','mode-student-yesno','mode-student-ab','mode-student-abcd','mode-student-custom2','mode-student-color2','mode-student-color4','mode-student-draw','mode-student-text']
         .forEach(id => { const el = document.getElementById(id); if (el) el.classList.add('hidden'); });
+    // 同時保險移除 dtt-hidden 之外的「可能殘留的顯示」class
+    document.querySelectorAll('#student-answer-panel > div').forEach(d => {
+        if (d.id !== 'mode-student-dtt') d.style.display = 'none';
+    });
     // 顯示 dtt（用 flex 響應原 panel 的 flex 佈局）
     const wrap = document.getElementById('mode-student-dtt');
     if (!wrap) { console.error('找不到 #mode-student-dtt'); return; }
     wrap.classList.remove('dtt-hidden');
+    wrap.style.display = '';
     wrap.classList.add('flex');
     document.getElementById('dtt-student-title').textContent = '🧠 ' + dttSession.topic;
-    // 還原草稿 or 渲染空白
+    // ★ 統一渲染（不管有沒有草稿都用新版結構，避免舊結構殘留）
+    dttRenderStudentForm();
+    // 還原草稿（若存在）
     if (dttStudentAns && dttStudentAns.sessionId === dttSession.openedAt) {
-        document.getElementById('dtt-student-content').innerHTML = dttStudentAns.html;
+        if (typeof dttStudentAns.finalPick === 'number' && dttStudentAns.finalPick >= 0) {
+            dttPickMethod(dttStudentAns.finalPick);
+        }
+        if (dttStudentAns.reason) {
+            const r = document.getElementById('dtt-reason');
+            if (r) r.value = dttStudentAns.reason;
+        }
         document.getElementById('dtt-student-status').classList.remove('dtt-hidden');
-        // 重綁拖拉邏輯（因為 innerHTML 整個被換掉）
-        dttBindDragDrop();
-        dttUpdatePlacedInfo();
     } else {
-        dttStudentAns = { sessionId: dttSession.openedAt, html: '' };
-        dttRenderStudentForm();
+        dttStudentAns = { sessionId: dttSession.openedAt, html: '', finalPick: -1, reason: '' };
         document.getElementById('dtt-student-status').classList.add('dtt-hidden');
     }
     document.getElementById('student-current-mode-txt').innerText = '🧠 ' + dttSession.topic;
@@ -2422,7 +2513,7 @@ function dttRenderStudentForm() {
     const choiceBtns = [];
     for (let i = 0; i < s.methodCount; i++) {
         const name = s.methodNames[i] || ('方法 ' + (i+1));
-        const mImg = (s.methodImages && s.methodImages[i] && s.methodImages[i][0]) || '';
+        const mImg = ((s.methodImages && s.methodImages[i] && s.methodImages[i][0]) || (s.miI && s.miI[i] && s.miI[i][0]) || '');
         const mImgHtml = mImg ? `<img src="${mImg}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;margin-bottom:4px">` : `<div style="width:50px;height:50px;border-radius:6px;background:#fef3c7;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:#92400e;margin-bottom:4px">${i+1}</div>`;
         choiceBtns.push(`<button type="button" data-method="${i}" onclick="dttPickMethod(${i})"
             class="dtt-choice-btn"
@@ -2542,12 +2633,6 @@ function dttPickMethod(i) {
         btn.style.transform = isPicked ? 'scale(1.05)' : 'scale(1)';
         btn.style.boxShadow = isPicked ? '0 4px 12px rgba(234,179,8,.4)' : 'none';
     });
-    // 同步狀態徽章
-    const pill = document.getElementById('dtt-status-' + (dttSession.methodCount*2));
-    if (pill) {
-        const name = (dttSession.methodNames && dttSession.methodNames[i]) || ('方法 ' + (i+1));
-        pill.outerHTML = `<span class="dtt-status-pill dtt-status-done" id="dtt-status-${dttSession.methodCount*2}">已選：${dttEsc(name)}</span>`;
-    }
 }
 function dttUpdatePlacedInfo() {
     // 統計：放對幾個 / 總共
