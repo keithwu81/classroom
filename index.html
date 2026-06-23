@@ -140,14 +140,10 @@
                     <div class="space-y-4">
                         <input type="text" id="input-name" placeholder="請輸入姓名 (例: 陳小明)" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-semibold text-center text-lg">
                         <button onclick="loginStudent()" class="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg transition-all">進入課堂系統</button>
-                        <div style="display:flex;gap:6px">
-                            <input type="text" id="input-dtt-code" maxlength="6" placeholder="題目代碼" class="flex-1 min-w-0 px-3 py-2 bg-amber-50 border-2 border-amber-300 rounded-lg text-center font-mono font-bold text-amber-900 uppercase tracking-widest" style="font-size:18px;letter-spacing:4px">
-                            <button onclick="studentFetchByCode()" class="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg shadow">輸入</button>
-                        </div>
                         <button onclick="studentFetchDtt()" id="btn-fetch-dtt" class="w-full py-3 bg-rose-100 hover:bg-rose-200 text-rose-700 font-bold rounded-xl shadow transition-all flex items-center justify-center gap-2">
                             🔄 載入老師的解難決策題目
                         </button>
-                        <p class="text-[10px] text-slate-500 text-center leading-relaxed">💡 iPad 用戶：先試「輸入題目代碼」（老師會唸給你聽）；不行再按下方按鈕</p>
+                        <p class="text-[10px] text-slate-500 text-center leading-relaxed">💡 iPad 用戶：若掃碼後看不到題目，按此按鈕即可手動載入</p>
                     </div>
                 </div>
             </div>
@@ -1464,10 +1460,6 @@ window.clearPresentation = function() {
     </div>
     <div class="dtt-body" style="text-align:center">
       <div id="dtt-qr-topic" style="font-size:18px;font-weight:800;margin-bottom:10px;color:#be123c"></div>
-      <div style="background:#fef9c3;border:2px solid #facc15;border-radius:10px;padding:8px;margin-bottom:10px;text-align:center">
-        <div style="font-size:10px;color:#854d0e;font-weight:800;letter-spacing:1px">📋 題目代碼（學生掃不到時輸入）</div>
-        <div id="dtt-qr-code" style="font-size:24px;font-weight:900;color:#be123c;letter-spacing:4px;font-family:monospace;margin-top:2px">—</div>
-      </div>
       <div style="background:#fff;padding:10px;border-radius:14px;display:inline-block;border:2px solid #fecdd3">
         <img id="dtt-qr-img" style="width:200px;height:200px" alt="QR">
       </div>
@@ -2249,9 +2241,7 @@ window.dttPublishFinal = function() {
     if (!dttSession) return;
     closeDttTeacherThink();
     dttStudentAnswers = {};
-    // ★ 產生 6 字元題目代碼
-    const code = Math.random().toString(36).slice(2, 8).toUpperCase();
-    // 打包給學生（題目 + 方法文字 + 後果文字；圖另外存進「題目代碼庫」）
+    // 打包給學生（題目 + 方法 + 後果，含圖）
     const lite = {
         topic: dttSession.topic,
         q1: stripHtml(dttSession.q1 || ''),
@@ -2262,31 +2252,9 @@ window.dttPublishFinal = function() {
         ci: (dttSession.conseqTexts || []).map(s => stripHtml(s)),
         ciI: (dttSession.conseqImages || []).map(arr => arr || []),
         cm: dttSession.correctMethod,
-        op: dttSession.openedAt,
-        code
+        op: dttSession.openedAt
     };
-    // ★ 把完整題目（含圖）存進 localStorage 庫，按代碼查
-    try {
-        localStorage.setItem('dtt_code_' + code, JSON.stringify({
-            topic: dttSession.topic,
-            q1: dttSession.q1,
-            mc: dttSession.methodCount,
-            mn: dttSession.methodNames,
-            mi: dttSession.methodImgs,
-            miI: dttSession.methodImages,
-            ci: dttSession.conseqTexts,
-            ciI: dttSession.conseqImages,
-            cm: dttSession.correctMethod,
-            op: dttSession.openedAt,
-            code,
-            roomCode
-        }));
-        showToast('💾 題目代碼：' + code + '（學生輸入此代碼可載入）', 'success', 5000);
-    } catch(e) {
-        console.warn('localStorage 儲存失敗', e);
-    }
     openDttQr(lite);
-    // 廣播給學生
     dttBroadcast('dtt_publish', lite);
     // 額外多發幾次（處理 SSE 掉線的學生）
     let count = 0;
@@ -2306,7 +2274,7 @@ function openDttQr(lite) {
     document.getElementById('dtt-qr-topic').textContent = '🧠 ' + (lite?.topic || dttSession?.topic || '');
     // ★ 顯示題目代碼（讓學生手動輸入作為備援）
     const codeEl = document.getElementById('dtt-qr-code');
-    if (codeEl) codeEl.textContent = lite?.code || '—';
+    if (codeEl) codeEl.remove();   // 移除舊元素（如果還在）
     // QR 圖（主 API + 2 個 fallback）
     const img = document.getElementById('dtt-qr-img');
     const fallback = document.getElementById('dtt-qr-fallback');
@@ -2609,23 +2577,6 @@ window.studentFetchDtt = async function() {
     }
 };
 
-// 學生輸入題目代碼（同裝置 localStorage 載入）
-window.studentFetchByCode = function() {
-    const code = (document.getElementById('input-dtt-code').value || '').trim().toUpperCase();
-    if (!code) return showToast('請輸入 6 字元題目代碼', 'warning');
-    try {
-        const raw = localStorage.getItem('dtt_code_' + code);
-        if (!raw) return showToast('找不到此代碼的題目（請確認代碼正確）', 'error', 4000);
-        const data = JSON.parse(raw);
-        dttSession = data;
-        console.log('[DTT] 代碼載入:', data.topic);
-        dttEnterStudentView();
-        showToast('✅ 已用代碼載入題目！', 'success');
-    } catch(e) {
-        showToast('❌ 代碼載入失敗：' + e.message, 'error', 4000);
-    }
-};
-
 function dttEnterStudentView() {
     if (!dttSession) return;
     if (!localStudent.isLoggedIn) {
@@ -2646,80 +2597,163 @@ function showDttStudentView() {
     // 先把所有原生 mode 隱藏（用 Tailwind hidden）
     ['mode-waiting','mode-student-yesno','mode-student-ab','mode-student-abcd','mode-student-custom2','mode-student-color2','mode-student-color4','mode-student-draw','mode-student-text']
         .forEach(id => { const el = document.getElementById(id); if (el) el.classList.add('hidden'); });
-    // 同時保險移除 dtt-hidden 之外的「可能殘留的顯示」class
+    // 隱藏所有非 dtt 的 panel 內容
     document.querySelectorAll('#student-answer-panel > div').forEach(d => {
         if (d.id !== 'mode-student-dtt') d.style.display = 'none';
     });
-    // 顯示 dtt（用 flex 響應原 panel 的 flex 佈局）
+    // ★ 全螢幕顯示 dtt 介面
     const wrap = document.getElementById('mode-student-dtt');
     if (!wrap) { console.error('找不到 #mode-student-dtt'); return; }
     wrap.classList.remove('dtt-hidden');
-    wrap.style.display = '';
     wrap.classList.add('flex');
-    document.getElementById('dtt-student-title').textContent = '🧠 ' + dttSession.topic;
-    // ★ 統一渲染（不管有沒有草稿都用新版結構，避免舊結構殘留）
+    // 讓它「逃出」panel 成為 fixed 全螢幕
+    wrap.style.position = 'fixed';
+    wrap.style.inset = '0';
+    wrap.style.width = '100vw';
+    wrap.style.height = '100vh';
+    wrap.style.maxWidth = 'none';
+    wrap.style.zIndex = '7000';
+    wrap.style.background = 'linear-gradient(135deg,#fef3c7 0%,#fce7f3 50%,#dbeafe 100%)';
+    wrap.style.padding = '16px';
+    wrap.style.overflowY = 'auto';
+    wrap.style.WebkitOverflowScrolling = 'touch';
+    // 隱藏學生 workspace 的系統狀態列（避免擋視覺）
+    const sysBox = document.querySelector('#student-workspace .mt-4.p-3.bg-slate-50');
+    if (sysBox) sysBox.style.display = 'none';
+    document.getElementById('student-current-mode-txt').innerText = '🧠 ' + dttSession.topic;
+    // 渲染
     dttRenderStudentForm();
     // 還原草稿（若存在）
     if (dttStudentAns && dttStudentAns.sessionId === dttSession.openedAt) {
         if (typeof dttStudentAns.finalPick === 'number' && dttStudentAns.finalPick >= 0) {
-            dttPickMethod(dttStudentAns.finalPick);
-        }
-        if (dttStudentAns.reason) {
+            dttStudentExpandMethod(dttStudentAns.finalPick);
             const r = document.getElementById('dtt-reason');
-            if (r) r.value = dttStudentAns.reason;
+            if (r) r.value = dttStudentAns.reason || '';
         }
         document.getElementById('dtt-student-status').classList.remove('dtt-hidden');
     } else {
         dttStudentAns = { sessionId: dttSession.openedAt, html: '', finalPick: -1, reason: '' };
         document.getElementById('dtt-student-status').classList.add('dtt-hidden');
     }
-    document.getElementById('student-current-mode-txt').innerText = '🧠 ' + dttSession.topic;
 }
+
+// 關閉全螢幕 DTT，回到原 panel
+window.dttExitFullscreen = function() {
+    const wrap = document.getElementById('mode-student-dtt');
+    if (!wrap) return;
+    wrap.style.position = '';
+    wrap.style.inset = '';
+    wrap.style.width = '';
+    wrap.style.height = '';
+    wrap.style.maxWidth = '';
+    wrap.style.zIndex = '';
+    wrap.style.background = '';
+    wrap.style.padding = '';
+    wrap.style.overflowY = '';
+    // 恢復系統狀態列
+    const sysBox = document.querySelector('#student-workspace .mt-4.p-3.bg-slate-50');
+    if (sysBox) sysBox.style.display = '';
+    // 切回原 mode
+    updateStudentModeUI(currentMode);
+};
 
 function dttRenderStudentForm() {
     const s = dttSession;
     const html = [];
-    // ★ 簡化版學生介面：只看題目 + 老師準備好的後果 + 選方法
-    // 題目
-    html.push(`<div class="dtt-student-method" style="background:linear-gradient(135deg,#fff5f5,#fef3c7);border:2px solid #fecdd3">
-        <h4 style="color:#be123c;margin-bottom:6px">🧠 ${dttEsc(s.topic || '解難決策')}</h4>
-        <div style="background:#fff;border-radius:8px;padding:10px;font-size:15px;color:#881337;font-weight:600;line-height:1.6">${s.q1 || '請選擇一個方法'}</div>
+    // ★ 頂部：題目 + 關閉全螢幕
+    html.push(`<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;background:linear-gradient(135deg,#fff5f5,#fef3c7);border:2px solid #fecdd3;border-radius:14px;padding:12px 16px;box-shadow:0 4px 12px rgba(190,18,60,.15)">
+        <div style="flex:1;min-width:0">
+            <div style="font-size:11px;color:#be123c;font-weight:800;letter-spacing:1px">🧠 解難決策題</div>
+            <div style="font-size:18px;font-weight:900;color:#881337;margin-top:2px;line-height:1.3">${dttEsc(s.topic || '請選一個方法')}</div>
+        </div>
+        <button onclick="dttExitFullscreen()" style="background:#fff;border:2px solid #cbd5e1;color:#475569;width:36px;height:36px;border-radius:50%;font-size:20px;font-weight:800;cursor:pointer;flex-shrink:0">×</button>
     </div>`);
-    // 後果（每個方法）
-    for (let i = 0; i < s.methodCount; i++) {
-        const name = s.methodNames[i] || ('方法 ' + (i+1));
-        const conseqText = stripHtml(s.conseqTexts[i] || '');
-        const conseqImgs = (s.conseqImages && s.conseqImages[i]) || (s.ciI && s.ciI[i]) || [];
-        html.push(`<div class="dtt-student-method" style="background:#f0fdf4;border-color:#bbf7d0">
-            <h4 style="color:#15803d">🚪 ${dttEsc(name)} 的後果</h4>
-            ${conseqImgs.length > 0 ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;padding:6px;background:#fff;border-radius:8px;border:1px solid #bbf7d0">${conseqImgs.map(src => `<img src="${src}" onclick="dttShowLightbox('${src}')" style="width:90px;height:90px;object-fit:cover;border-radius:6px;border:2px solid #16a34a;cursor:zoom-in">`).join('')}</div>` : ''}
-            <div style="background:#fff;border-radius:8px;padding:8px;font-size:13px;color:#334155;line-height:1.5">${conseqText || '（老師沒填寫後果）'}</div>
-        </div>`);
+    // 題目情境
+    if (s.q1) {
+        html.push(`<div style="background:#fff;border-left:6px solid #be123c;border-radius:10px;padding:12px 16px;margin-bottom:14px;font-size:15px;color:#881337;font-weight:600;line-height:1.6;box-shadow:0 2px 8px rgba(0,0,0,.06)">${dttEsc(s.q1)}</div>`);
     }
-    // 步驟4：選方法
-    const choiceBtns = [];
+    // ★ 題型區：方法按鈕組（每個是獨立的題型）
+    html.push(`<div style="margin-bottom:10px">
+        <div style="font-size:12px;color:#92400e;font-weight:800;letter-spacing:1px;margin-bottom:8px">📋 請選擇一個方法查看後果並作答：</div>
+        <div id="dtt-method-buttons" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px">`);
     for (let i = 0; i < s.methodCount; i++) {
         const name = s.methodNames[i] || ('方法 ' + (i+1));
         const mImg = ((s.methodImages && s.methodImages[i] && s.methodImages[i][0]) || (s.miI && s.miI[i] && s.miI[i][0]) || '');
-        const mImgHtml = mImg ? `<img src="${mImg}" onclick="dttShowLightbox('${mImg}')" style="width:70px;height:70px;object-fit:cover;border-radius:6px;margin-bottom:4px;cursor:zoom-in;border:2px solid #fbbf24">` : `<div style="width:70px;height:70px;border-radius:6px;background:#fef3c7;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:900;color:#92400e;margin-bottom:4px">${i+1}</div>`;
-        choiceBtns.push(`<button type="button" data-method="${i}" onclick="dttPickMethod(${i})"
-            class="dtt-choice-btn"
-            style="padding:10px 14px;background:#fff;border:3px solid #fde047;border-radius:14px;cursor:pointer;font-weight:800;color:#854d0e;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:100px;transition:all .15s">
+        const mImgHtml = mImg
+            ? `<img src="${mImg}" onclick="event.stopPropagation();dttShowLightbox('${mImg}')" style="width:100%;height:80px;object-fit:cover;border-radius:8px;margin-bottom:6px;cursor:zoom-in">`
+            : `<div style="width:100%;height:80px;border-radius:8px;background:linear-gradient(135deg,#fef3c7,#fde68a);display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:900;color:#92400e;margin-bottom:6px">${i+1}</div>`;
+        html.push(`<button type="button" data-method="${i}" onclick="dttStudentExpandMethod(${i})" class="dtt-method-pick-btn"
+            style="padding:8px;background:#fff;border:3px solid #fbbf24;border-radius:14px;cursor:pointer;font-weight:800;color:#854d0e;display:flex;flex-direction:column;align-items:center;gap:2px;transition:all .15s;box-shadow:0 2px 6px rgba(251,191,36,.3)">
             ${mImgHtml}
-            <span style="font-size:14px">${dttEsc(name)}</span>
+            <span style="font-size:14px;font-weight:900">${dttEsc(name)}</span>
         </button>`);
     }
-    html.push(`<div class="dtt-student-method" style="background:linear-gradient(135deg,#fef9c3,#fde68a);border:2px solid #fde047">
-        <h4 style="color:#854d0e;margin-bottom:8px">🗳️ 我會選哪一個方法？</h4>
-        <div id="dtt-choice-row" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">${choiceBtns.join('')}</div>
-        <p style="font-size:12px;color:#92400e;margin:6px 0 4px;font-weight:700">📝 為什麼選這個方法？</p>
-        <textarea id="dtt-reason" rows="3" placeholder="寫下你的理由…"
-            style="width:100%;padding:8px;border:2px solid #fde047;border-radius:8px;background:#fff;font-family:inherit;font-size:14px;resize:vertical"></textarea>
+    html.push(`</div></div>`);
+    // ★ 後果+作答區（預設隱藏，點方法才展開）
+    html.push(`<div id="dtt-conseq-area" class="dtt-hidden" style="background:#fff;border-radius:14px;padding:14px;box-shadow:0 4px 12px rgba(0,0,0,.08);margin-bottom:10px">
+        <div id="dtt-conseq-header" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:10px;border-bottom:2px dashed #d1fae5"></div>
+        <div id="dtt-conseq-content"></div>
+        <p style="font-size:13px;color:#0f766e;font-weight:800;margin:14px 0 6px">📝 回答問題（針對你選的方法）：</p>
+        <textarea id="dtt-reason" rows="4" placeholder="寫下你的看法、理由或選擇的原因…"
+            style="width:100%;padding:10px;border:2px solid #99f6e4;border-radius:10px;background:#f0fdfa;font-family:inherit;font-size:15px;line-height:1.5;resize:vertical"></textarea>
         <input type="hidden" id="dtt-final-pick" value="">
+        <button onclick="submitDttAnswer()" id="dtt-student-submit"
+            style="width:100%;margin-top:12px;padding:14px;background:linear-gradient(135deg,#10b981,#0d9488);color:#fff;font-weight:900;font-size:17px;border:none;border-radius:12px;box-shadow:0 4px 12px rgba(16,185,129,.3);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
+            🚀 送出我的回答
+        </button>
     </div>`);
-
     document.getElementById('dtt-student-content').innerHTML = html.join('');
 }
+
+// ★ 學生點選方法 → 展開後果+作答區（一次只能展開一個）
+window.dttStudentExpandMethod = function(methodIdx) {
+    if (!dttSession) return;
+    const s = dttSession;
+    // 高亮選中的按鈕
+    document.querySelectorAll('.dtt-method-pick-btn').forEach((btn, idx) => {
+        if (idx === methodIdx) {
+            btn.style.background = '#fef08a';
+            btn.style.borderColor = '#eab308';
+            btn.style.transform = 'scale(1.03)';
+            btn.style.boxShadow = '0 6px 16px rgba(234,179,8,.4)';
+        } else {
+            btn.style.background = '#fff';
+            btn.style.borderColor = '#fbbf24';
+            btn.style.transform = 'scale(1)';
+            btn.style.boxShadow = '0 2px 6px rgba(251,191,36,.3)';
+        }
+    });
+    // 展開後果區
+    const name = s.methodNames[methodIdx] || ('方法 ' + (methodIdx + 1));
+    const conseqText = stripHtml(s.conseqTexts[methodIdx] || '');
+    const conseqImgs = (s.conseqImages && s.conseqImages[methodIdx]) || (s.ciI && s.ciI[methodIdx]) || [];
+    document.getElementById('dtt-conseq-header').innerHTML = `
+        <div style="background:#16a34a;color:#fff;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:900;flex-shrink:0">${methodIdx+1}</div>
+        <div>
+            <div style="font-size:11px;color:#15803d;font-weight:800">🚪 ${dttEsc(name)} 的後果</div>
+            <div style="font-size:13px;color:#64748b">看看這個方法會帶來什麼</div>
+        </div>`;
+    let contentHtml = '';
+    if (conseqImgs.length > 0) {
+        contentHtml += `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:6px;background:#f0fdf4;border-radius:10px">${conseqImgs.map(src => `<img src="${src}" onclick="dttShowLightbox('${src}')" style="width:120px;height:120px;object-fit:cover;border-radius:8px;border:2px solid #16a34a;cursor:zoom-in">`).join('')}</div>`;
+    }
+    if (conseqText) {
+        contentHtml += `<div style="background:#f0fdf4;border-radius:10px;padding:12px;font-size:15px;color:#334155;line-height:1.6;white-space:pre-wrap">${dttEsc(conseqText)}</div>`;
+    }
+    if (!conseqText && conseqImgs.length === 0) {
+        contentHtml = `<div style="background:#f1f5f9;border-radius:10px;padding:12px;font-size:14px;color:#94a3b8;text-align:center;font-style:italic">（老師沒填寫這個方法的後果）</div>`;
+    }
+    document.getElementById('dtt-conseq-content').innerHTML = contentHtml;
+    // 顯示後果區（並隱藏其他方法的內容，因為一次只看一個）
+    const area = document.getElementById('dtt-conseq-area');
+    area.classList.remove('dtt-hidden');
+    area.style.display = 'block';
+    // 設定 finalPick
+    const hidden = document.getElementById('dtt-final-pick');
+    if (hidden) hidden.value = methodIdx;
+    // 平滑捲動到作答區
+    setTimeout(() => area.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+};
 
 // 學生拖拉配對邏輯
 function dttBindDragDrop() {
@@ -2937,18 +2971,25 @@ function dttSaveDraw(idx) {
 window.submitDttAnswer = function() {
     if (!localStudent.isLoggedIn) return showToast('請先登入', 'warning');
     if (!dttSession) return showToast('老師尚未發佈', 'warning');
-    // 收集最終選擇
     const finalPickEl = document.getElementById('dtt-final-pick');
     const finalPick = finalPickEl ? parseInt(finalPickEl.value, 10) : -1;
-    if (finalPick < 0) return showToast('請先選一個方法！', 'warning');
-    // 收集理由
+    if (finalPick < 0) return showToast('請先在上面選一個方法！', 'warning');
     const reason = (document.getElementById('dtt-reason')?.value || '').trim();
+    if (!reason) {
+        if (!confirm('你還沒寫回答內容，確定送出嗎？')) return;
+    }
     const html = document.getElementById('dtt-student-content').innerHTML;
     dttStudentAns = { sessionId: dttSession.openedAt, html, finalPick, reason };
     const payload = { id: localStudent.id, name: localStudent.name, html, ts: Date.now(), topic: dttSession.topic, finalPick, reason };
     dttBroadcast('dtt_submit', payload);
-    document.getElementById('dtt-student-status').classList.remove('dtt-hidden');
-    document.getElementById('display-last-submit').innerHTML = '<span class="text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-bold">✅ 已送出</span>';
+    // 全螢幕 DTT 內的成功狀態
+    const submitBtn = document.getElementById('dtt-student-submit');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '✅ 已送出！可再修改重送';
+        submitBtn.style.background = '#94a3b8';
+    }
+    showToast('✅ 已送出你的回答！', 'success');
     showToast(totalImgs > 0 ? `已送出！配對 ${correctCount}/${totalImgs}，已選方法 ${finalPick + 1}` : `已送出！已選方法 ${finalPick + 1}`, 'success');
 };
 
