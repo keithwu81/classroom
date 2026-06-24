@@ -475,40 +475,66 @@ window.addEventListener('load', () => {
     // 顯示 FAB 工具列（老師全功能；學生端不顯示 FAB — 學生只看老師推送的內容）
     const fab = document.getElementById('toolbar-fab');
     if (fab) fab.style.display = isForceStudent ? 'none' : 'flex';
-    // 🤖 學生端：載入 AI 數字人（語音助理）
+    // 🤖 學生端：顯示「💬 問 AI」按鈕（按了才啟動數字人 — 預設不載入避免干擾）
     if (isForceStudent) {
-        // ★ 先載入 knowledge.js 到主頁，確保 widget iframe 也能讀到
-        fetch('knowledge.js').then(r => r.text()).then(txt => {
-            try { eval(txt); console.log('[Avatar] 主頁 KB 已載入，共', (window.KB || []).length, '筆'); } catch(e) {}
-        }).catch(e => console.warn('[Avatar] 主頁 KB 載入失敗', e));
-
         setTimeout(() => {
-            const s = document.createElement('script');
-            s.src = 'embed.js';
-            s.setAttribute('data-widget', 'widget.html');
-            // data-model 留空 = 用 widget.html 內建預設 Live2D 角色
-            s.async = true;
-            document.body.appendChild(s);
-            console.log('[Avatar] 學生端 AI 數字人已載入');
-            // ★ iframe 載入後，把主頁的 KB 注入到 widget
+            const btn = document.getElementById('avatar-launch-btn');
+            if (btn) btn.classList.remove('dtt-hidden');
+        }, 1200);
+    }
+});
+
+// ★ 按下「💬 問 AI」按鈕才載入 widget（避免頁面被 iframe 干擾）
+let avatarLaunched = false;
+window.launchAvatar = function() {
+    if (avatarLaunched) {
+        // 已啟動：呼叫 embed.js 的 open API 展開
+        try { window.AvatarWidget && window.AvatarWidget.open(); } catch(e) {}
+        return;
+    }
+    avatarLaunched = true;
+    const btn = document.getElementById('avatar-launch-btn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ 啟動中…'; }
+    showToast('🤖 正在啟動 AI 助理…', 'info', 2000);
+    // 先預載 knowledge.js 到主頁
+    fetch('knowledge.js').then(r => r.text()).then(txt => {
+        try {
+            eval(txt);
+            console.log('[Avatar] 主頁 KB 載入，共', (window.KB || []).length, '筆');
+        } catch(e) { console.warn('[Avatar] 主頁 KB eval 失敗', e); }
+        // 再載 embed.js（會建立 iframe）
+        const s = document.createElement('script');
+        s.src = 'embed.js';
+        s.setAttribute('data-widget', 'widget.html');
+        s.setAttribute('data-open', 'false');   // 預設收起（避免擋住頁面）
+        s.async = true;
+        s.onload = () => {
+            console.log('[Avatar] embed.js 載入完成');
+            // 等 iframe 載入後注入 KB
             setTimeout(() => {
                 const root = document.getElementById('avatar-widget-root');
                 if (root) {
                     const iframe = root.querySelector('iframe');
                     if (iframe && iframe.contentWindow) {
                         try {
-                            // 重新注入 KB（覆蓋 widget.html 內建的）
-                            fetch('knowledge.js').then(r => r.text()).then(txt => {
-                                iframe.contentWindow.eval(txt);
-                                console.log('[Avatar] KB 已注入 widget iframe，共', (iframe.contentWindow.KB || []).length, '筆');
-                            }).catch(e => console.warn('[Avatar] KB 注入失敗', e));
-                        } catch(e) { console.warn('[Avatar] 注入 KB 失敗（同源限制）', e); }
+                            iframe.contentWindow.eval(txt);
+                            console.log('[Avatar] KB 注入 widget，共', (iframe.contentWindow.KB || []).length, '筆');
+                        } catch(e) { console.warn('[Avatar] 注入 KB 失敗', e); }
                     }
                 }
-            }, 1500);
-        }, 800);
-    }
-});
+                if (btn) { btn.disabled = false; btn.innerHTML = '💬 問 AI（已啟動）'; btn.style.background = '#94a3b8'; }
+            }, 1800);
+        };
+        s.onerror = () => {
+            if (btn) { btn.disabled = false; btn.innerHTML = '💬 問 AI'; }
+            showToast('❌ AI 啟動失敗，請重試', 'error');
+        };
+        document.body.appendChild(s);
+    }).catch(e => {
+        if (btn) { btn.disabled = false; btn.innerHTML = '💬 問 AI'; }
+        showToast('❌ 載入失敗：' + e.message, 'error');
+    });
+};
 
 // ── 房號 ──────────────────────────────────────────────────────
 function initRoomCode() {
@@ -1866,6 +1892,9 @@ window.clearPresentation = function() {
 <!-- 學生端計算機按鈕（FAB） -->
 <button id="calc-fab" onclick="openCalc()" class="dtt-hidden" style="position:fixed;bottom:24px;left:24px;z-index:7500;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#06b6d4,#3b82f6);color:#fff;border:none;box-shadow:0 6px 20px rgba(6,182,212,.4);font-size:28px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s" title="計算機">🧮</button>
 
+<!-- AI 數字人啟動按鈕（學生端，按了才載入 widget） -->
+<button id="avatar-launch-btn" onclick="launchAvatar()" class="dtt-hidden" style="position:fixed;bottom:24px;left:90px;z-index:7500;height:56px;padding:0 16px;border-radius:28px;background:linear-gradient(135deg,#7d78f0,#5b54e8);color:#fff;border:none;box-shadow:0 6px 20px rgba(91,84,232,.4);font-size:15px;font-weight:900;cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .15s" title="開啟 AI 語音助理">💬 問 AI</button>
+
 <!-- 電子筆浮動工具列（覆蓋在簡報上） -->
 <div id="pen-toolbar-float" class="dtt-hidden" style="position:fixed;top:80px;left:50%;transform:translateX(-50%);z-[9500];background:linear-gradient(135deg,#8b5cf6,#7c3aed);color:#fff;border-radius:14px;padding:8px 12px;display:flex;gap:8px;align-items:center;box-shadow:0 10px 30px rgba(124,58,237,.4);flex-wrap:wrap;max-width:95vw">
   <span style="font-size:12px;font-weight:900;display:flex;align-items:center;gap:4px">
@@ -2935,18 +2964,35 @@ function applyPollStart(payload) {
 }
 
 window.pollStudentVote = function(idx) {
-    if (!localStudent.isLoggedIn) return showToast('請先登入', 'warning');
-    if (!pollData) return;
-    // 記錄這位學生已投票
-    pollData._myVote = idx;
-    dttBroadcast('poll_vote', { id: localStudent.id, name: localStudent.name, idx });
-    document.getElementById('poll-student-done').classList.remove('dtt-hidden');
-    document.querySelectorAll('#poll-student-options button').forEach((btn, i) => {
-        btn.style.background = i === idx ? '#fbbf24' : '#fff';
-        btn.style.borderColor = i === idx ? '#16a34a' : '#f97316';
-        btn.disabled = true;
-    });
-    setTimeout(() => document.getElementById('poll-student-done').classList.add('dtt-hidden'), 2000);
+    try {
+        if (!localStudent.isLoggedIn) return showToast('請先登入', 'warning');
+        if (!pollData) return showToast('投票尚未開始', 'warning');
+        pollData._myVote = idx;
+        dttBroadcast('poll_vote', { id: localStudent.id, name: localStudent.name, idx });
+        // 視覺回饋：把所有按鈕改為已選狀態
+        document.querySelectorAll('#poll-student-options button').forEach((btn, i) => {
+            const isPicked = (i === idx);
+            btn.style.background = isPicked ? '#10b981' : '#f1f5f9';
+            btn.style.borderColor = isPicked ? '#059669' : '#cbd5e1';
+            btn.style.color = isPicked ? '#fff' : '#94a3b8';
+            btn.disabled = true;
+            btn.style.cursor = 'default';
+            btn.innerHTML = isPicked
+                ? `${dttEsc(pollData.options[i])}<br><span style="font-size:12px;font-weight:700">✓ 已選</span>`
+                : `${dttEsc(pollData.options[i])}`;
+        });
+        // 顯示大字「已投票」訊息
+        const doneEl = document.getElementById('poll-student-done');
+        if (doneEl) {
+            doneEl.classList.remove('dtt-hidden');
+            doneEl.style.display = 'block';
+            doneEl.innerHTML = `✅ 你已投給「${dttEsc(pollData.options[idx])}」<br><span style="font-size:12px;color:#64748b;font-weight:600">等待老師結束…</span>`;
+        }
+        showToast('✅ 已投票！', 'success');
+    } catch(err) {
+        console.error('pollStudentVote 錯誤', err);
+        showToast('投票失敗：' + err.message, 'error');
+    }
 };
 
 function applyPollVote(payload) {
