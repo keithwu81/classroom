@@ -423,6 +423,8 @@ let currentMode = 'yes_no';
 let currentRole = 'split';
 let localResponses = {};
 let custom2Labels = { c1: '選項 1', c2: '選項 2' }; // 老師可自訂的 2 選 1 名稱
+// ★ 已登入學生名單（老師端用；Map<id, {name, ts}>，抽籤/獎勵可「從已登入載入」）
+let loggedInStudents = new Map();
 let localStudent = {
     id: 'stu_' + Math.random().toString(36).substr(2, 8),
     name: '',
@@ -590,7 +592,12 @@ function restoreLocalState() {
     try {
         // 使用房號區分學生登入狀態，避免掃描新 QR Code 後跨房間跳過登入畫面
         const s = JSON.parse(localStorage.getItem('cyk_student_' + roomCode));
-        if (s && s.isLoggedIn) { localStudent = s; showStudentWorkspace(); }
+        if (s && s.isLoggedIn) {
+            localStudent = s;
+            showStudentWorkspace();
+            // ★ 重整後補發 student_login（讓老師名單不漏人）
+            setTimeout(() => ntfySend('student_login', { id: localStudent.id, name: localStudent.name, ts: Date.now() }), 200);
+        }
     } catch(e) {}
     try {
         const r = JSON.parse(localStorage.getItem('cyk_res_' + roomCode));
@@ -675,6 +682,12 @@ function connectSSE_Teacher() {
                     pollData.votes[msg.payload.idx]++;
                     renderPollStats();
                     showToast('🗳️ ' + (msg.payload.name || '學生') + ' 投了「' + (pollData.options[msg.payload.idx] || '') + '」', 'info', 2000);
+                }
+            } else if (msg.type === 'student_login') {
+                // ★ 學生登入 → 老師累加名單（抽籤/獎勵可從已登入載入）
+                if (msg.payload && msg.payload.id && msg.payload.name) {
+                    loggedInStudents.set(msg.payload.id, { name: msg.payload.name, ts: msg.payload.ts || Date.now() });
+                    console.log('[Roster] +1 已登入:', msg.payload.name, '(共', loggedInStudents.size, '人)');
                 }
             }
         } catch(e2) {}
@@ -1005,6 +1018,8 @@ window.loginStudent = function() {
     localStorage.setItem('cyk_student_' + roomCode, JSON.stringify(localStudent));
     showStudentWorkspace();
     showToast('歡迎 ' + name + '！', 'success');
+    // ★ 廣播登入訊息給老師（讓抽籤/獎勵可「從已登入載入」）
+    ntfySend('student_login', { id: localStudent.id, name: name, ts: Date.now() });
     // ★ 若 URL 已帶 dtt 題目，登入後立即顯示（不依賴 SSE）
     if (dttSession && typeof showDttStudentView === 'function') {
         setTimeout(() => showDttStudentView(), 100);
@@ -1682,6 +1697,7 @@ window.clearPresentation = function() {
             style="width:100%;padding:8px;border:2px solid #fbcfe8;border-radius:8px;font-family:inherit;font-size:13px;resize:vertical"></textarea>
           <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
             <button onclick="lotteryLoadDemo()" class="dtt-btn dtt-btn-ghost" style="font-size:11px;padding:4px 10px">📝 載入範例</button>
+            <button onclick="lotteryLoadFromBoard()" class="dtt-btn dtt-btn-ghost" style="font-size:11px;padding:4px 10px">👥 從已登入載入</button>
             <button onclick="lotteryClear()" class="dtt-btn dtt-btn-ghost" style="font-size:11px;padding:4px 10px">🧹 清空</button>
             <button onclick="lotteryShuffle()" class="dtt-btn dtt-btn-ghost" style="font-size:11px;padding:4px 10px">🔀 打散</button>
           </div>
@@ -3042,9 +3058,22 @@ window.rewardLoadDemo = function() {
     document.getElementById('reward-names').value = '陳小明\n李小美\n王大文\n張小玲';
 };
 window.rewardLoadFromBoard = function() {
-    const names = Object.keys(localResponses);
-    if (names.length === 0) return showToast('目前沒有已登入學生', 'info');
-    document.getElementById('reward-names').value = names.join('\n');
+    if (loggedInStudents.size === 0) {
+        // 後備：從 localResponses 抓（曾經答過題的）
+        const names = Object.values(localResponses).map(r => (r && r.name) || '').filter(Boolean);
+        if (names.length === 0) return showToast('目前沒有已登入學生（請等學生先登入）', 'info');
+        // 去重
+        const uniq = [...new Set(names)];
+        document.getElementById('reward-names').value = uniq.join('\n');
+        showToast('👥 已從答題紀錄載入 ' + uniq.length + ' 個名字（建議學生重新登入刷新）', 'info', 3000);
+        return;
+    }
+    // ★ 從已登入名單（按時間排序）
+    const names = [...loggedInStudents.values()].sort((a, b) => a.ts - b.ts).map(x => x.name);
+    // 去重
+    const uniq = [...new Set(names)];
+    document.getElementById('reward-names').value = uniq.join('\n');
+    showToast('👥 已從已登入名單載入 ' + uniq.length + ' 人', 'success');
 };
 window.rewardReset = function() {
     if (!confirm('重設所有分數？')) return;
@@ -4011,6 +4040,25 @@ window.closeLottery = function() { document.getElementById('lottery-modal').clas
 window.lotteryLoadDemo = function() {
     document.getElementById('lottery-names').value = '陳小明\n李小美\n王大文\n張小玲\n黃小華\n林大衛\n吳小芳\n周大壯';
     lotteryUpdateCount();
+};
+
+window.lotteryLoadFromBoard = function() {
+    if (loggedInStudents.size === 0) {
+        // 後備：從 localResponses 抓（曾經答過題的）
+        const names = Object.values(localResponses).map(r => (r && r.name) || '').filter(Boolean);
+        if (names.length === 0) return showToast('目前沒有已登入學生（請等學生先登入）', 'info');
+        const uniq = [...new Set(names)];
+        document.getElementById('lottery-names').value = uniq.join('\n');
+        lotteryUpdateCount();
+        showToast('👥 已從答題紀錄載入 ' + uniq.length + ' 個名字（建議學生重新登入刷新）', 'info', 3000);
+        return;
+    }
+    // ★ 從已登入名單（按時間排序）
+    const names = [...loggedInStudents.values()].sort((a, b) => a.ts - b.ts).map(x => x.name);
+    const uniq = [...new Set(names)];
+    document.getElementById('lottery-names').value = uniq.join('\n');
+    lotteryUpdateCount();
+    showToast('👥 已從已登入名單載入 ' + uniq.length + ' 人', 'success');
 };
 
 window.lotteryClear = function() {
