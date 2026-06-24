@@ -477,16 +477,35 @@ window.addEventListener('load', () => {
     if (fab) fab.style.display = isForceStudent ? 'none' : 'flex';
     // 🤖 學生端：載入 AI 數字人（語音助理）
     if (isForceStudent) {
+        // ★ 先載入 knowledge.js 到主頁，確保 widget iframe 也能讀到
+        fetch('knowledge.js').then(r => r.text()).then(txt => {
+            try { eval(txt); console.log('[Avatar] 主頁 KB 已載入，共', (window.KB || []).length, '筆'); } catch(e) {}
+        }).catch(e => console.warn('[Avatar] 主頁 KB 載入失敗', e));
+
         setTimeout(() => {
             const s = document.createElement('script');
             s.src = 'embed.js';
             s.setAttribute('data-widget', 'widget.html');
-            s.setAttribute('data-knowledge', 'knowledge.js');
             // data-model 留空 = 用 widget.html 內建預設 Live2D 角色
-            // 想換角色就設定：s.setAttribute('data-model', '你的-model3.json');
             s.async = true;
             document.body.appendChild(s);
             console.log('[Avatar] 學生端 AI 數字人已載入');
+            // ★ iframe 載入後，把主頁的 KB 注入到 widget
+            setTimeout(() => {
+                const root = document.getElementById('avatar-widget-root');
+                if (root) {
+                    const iframe = root.querySelector('iframe');
+                    if (iframe && iframe.contentWindow) {
+                        try {
+                            // 重新注入 KB（覆蓋 widget.html 內建的）
+                            fetch('knowledge.js').then(r => r.text()).then(txt => {
+                                iframe.contentWindow.eval(txt);
+                                console.log('[Avatar] KB 已注入 widget iframe，共', (iframe.contentWindow.KB || []).length, '筆');
+                            }).catch(e => console.warn('[Avatar] KB 注入失敗', e));
+                        } catch(e) { console.warn('[Avatar] 注入 KB 失敗（同源限制）', e); }
+                    }
+                }
+            }, 1500);
         }, 800);
     }
 });
@@ -675,6 +694,24 @@ function connectSSE_Student() {
                 }
             } else if (msg.type === 'CUSTOM2_LABELS') {
                 applyModeChange('custom2', msg.payload);
+            } else if (msg.type === 'silent_on') {
+                applySilentOverlay(true, msg.payload.ts || Date.now());
+            } else if (msg.type === 'silent_off') {
+                applySilentOverlay(false);
+            } else if (msg.type === 'poll_start') {
+                applyPollStart(msg.payload);
+            } else if (msg.type === 'poll_end') {
+                applyPollEnd();
+            } else if (msg.type === 'poll_vote') {
+                applyPollVote(msg.payload);
+            } else if (msg.type === 'reward_celebrate') {
+                applyRewardCelebrate(msg.payload);
+            } else if (msg.type === 'reward_update') {
+                applyRewardUpdate(msg.payload);
+            } else if (msg.type === 'reward_init') {
+                applyRewardInit(msg.payload);
+            } else if (msg.type === 'reward_reset') {
+                applyRewardReset();
             }
         } catch(e2) {}
     };
@@ -694,6 +731,15 @@ function handleBCMessage(data) {
     if (type === 'ANS'   && currentRole !== 'student') writeAnswer(payload);
     if (type === 'STATE' && currentRole === 'student')  applyModeChange(payload.mode, payload);
     if (type === 'CLEAR') executeClear(false);
+    if (type === 'silent_on'  && currentRole === 'student') applySilentOverlay(true, payload.ts || Date.now());
+    if (type === 'silent_off' && currentRole === 'student') applySilentOverlay(false);
+    if (type === 'poll_start' && currentRole === 'student') applyPollStart(payload);
+    if (type === 'poll_end'   && currentRole === 'student') applyPollEnd();
+    if (type === 'poll_vote'  && currentRole !== 'student') { if (pollData && typeof payload.idx === 'number') { pollData.votes[payload.idx] = (pollData.votes[payload.idx] || 0) + 1; renderPollStats(); } }
+    if (type === 'reward_celebrate' && currentRole === 'student') applyRewardCelebrate(payload);
+    if (type === 'reward_init'     && currentRole === 'student') applyRewardInit(payload);
+    if (type === 'reward_update'   && currentRole === 'student') applyRewardUpdate(payload);
+    if (type === 'reward_reset'    && currentRole === 'student') applyRewardReset();
     if (type === 'TEACHER_READY' && currentRole === 'student') {
         applyModeChange(payload.mode, payload);
         if (payload && payload.dtt && !dttSession) {
@@ -3774,8 +3820,11 @@ function dttTryHook() {
                     const d = JSON.parse(e.data);
                     if (d.event === 'keepalive') return;
                     const msg = JSON.parse(d.message);
-                    if (msg && msg.type && msg.type.startsWith('dtt_')) {
-                        const ntfyId = d.id; if (ntfyId) { if (seenMsgIds.has(ntfyId)) return; seenMsgIds.add(ntfyId); }
+                    if (!msg || !msg.type) return;
+                    const ntfyId = d.id;
+                    // 處理 dtt_* / silent_* / poll_* / reward_*
+                    if (msg.type.startsWith('dtt_') || msg.type.startsWith('silent_') || msg.type.startsWith('poll_') || msg.type.startsWith('reward_')) {
+                        if (ntfyId) { if (seenMsgIds.has(ntfyId)) return; seenMsgIds.add(ntfyId); }
                         dttHandleIncoming(msg.type, msg.payload);
                     }
                 } catch(_) {}
