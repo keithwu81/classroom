@@ -506,10 +506,14 @@ window.launchAvatar = function() {
         const s = document.createElement('script');
         s.src = 'embed.js';
         s.setAttribute('data-widget', 'widget.html');
-        s.setAttribute('data-open', 'false');   // 預設收起（避免擋住頁面）
+        s.setAttribute('data-open', 'true');   // 載入後立即展開
         s.async = true;
         s.onload = () => {
             console.log('[Avatar] embed.js 載入完成');
+            // ★ 強制呼叫 open() 確保展開（即使 data-open 屬性被忽略）
+            setTimeout(() => {
+                try { window.AvatarWidget && window.AvatarWidget.open(); } catch(e) { console.warn('[Avatar] open 失敗', e); }
+            }, 200);
             // 等 iframe 載入後注入 KB
             setTimeout(() => {
                 const root = document.getElementById('avatar-widget-root');
@@ -522,7 +526,7 @@ window.launchAvatar = function() {
                         } catch(e) { console.warn('[Avatar] 注入 KB 失敗', e); }
                     }
                 }
-                if (btn) { btn.disabled = false; btn.innerHTML = '💬 問 AI（已啟動）'; btn.style.background = '#94a3b8'; }
+                if (btn) { btn.disabled = false; btn.innerHTML = '💬 AI 已啟動'; btn.style.background = '#94a3b8'; }
             }, 1800);
         };
         s.onerror = () => {
@@ -663,6 +667,14 @@ function connectSSE_Teacher() {
                 // ★ 若有 DTT 進行中的題目，一併發給剛連線的學生
                 if (dttSession) {
                     setTimeout(() => dttBroadcast('dtt_publish', dttSession), 50);
+                }
+            } else if (msg.type === 'poll_vote') {
+                // ★ 學生投票 → 老師即時累加
+                if (pollData && typeof msg.payload.idx === 'number') {
+                    if (!pollData.votes[msg.payload.idx]) pollData.votes[msg.payload.idx] = 0;
+                    pollData.votes[msg.payload.idx]++;
+                    renderPollStats();
+                    showToast('🗳️ ' + (msg.payload.name || '學生') + ' 投了「' + (pollData.options[msg.payload.idx] || '') + '」', 'info', 2000);
                 }
             }
         } catch(e2) {}
