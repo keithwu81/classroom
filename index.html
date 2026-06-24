@@ -108,6 +108,21 @@
             <span class="text-2xl leading-none">🔗</span>
             <span class="text-[10px] font-black mt-0.5">連結頁</span>
         </button>
+        <button onclick="toggleSilentMode()" data-tool="silent" title="靜音模式（鎖定全班）"
+            class="tool-fab-btn bg-gradient-to-br from-slate-700 to-slate-900 text-white">
+            <span class="text-2xl leading-none">🤫</span>
+            <span class="text-[10px] font-black mt-0.5">靜音</span>
+        </button>
+        <button onclick="openPoll()" data-tool="poll" title="即時投票牆"
+            class="tool-fab-btn bg-gradient-to-br from-orange-500 to-red-500 text-white">
+            <span class="text-2xl leading-none">📊</span>
+            <span class="text-[10px] font-black mt-0.5">投票牆</span>
+        </button>
+        <button onclick="openReward()" data-tool="reward" title="獎勵系統"
+            class="tool-fab-btn bg-gradient-to-br from-yellow-400 to-amber-500 text-white">
+            <span class="text-2xl leading-none">⭐</span>
+            <span class="text-[10px] font-black mt-0.5">獎勵</span>
+        </button>
     </div>
 
     <div id="toast-container" class="fixed top-20 right-4 z-[9999] flex flex-col gap-2 pointer-events-none"></div>
@@ -685,7 +700,10 @@ function ntfySend(type, payload) {
     const isToStudents = (type === 'STATE' || type === 'CLEAR' || type === 'CUSTOM2_LABELS'
                           || type === 'dtt_publish' || type === 'dtt_close' || type === 'dtt_clear'
                           || type.startsWith('timer_') || type.startsWith('pen_')
-                          || type === 'lottery_pick');
+                          || type === 'lottery_pick'
+                          || type === 'silent_on' || type === 'silent_off'
+                          || type === 'poll_start' || type === 'poll_end'
+                          || type.startsWith('reward_'));
     const topic  = isToStudents ? `cv_rm_${roomCode}` : `cv_rs_${roomCode}`;
     const msgId  = Math.random().toString(36).substr(2, 10);
     const body   = JSON.stringify({ type, payload, msgId });
@@ -1443,7 +1461,11 @@ window.clearPresentation = function() {
       <button class="dtt-close" onclick="closeDttTeacherThink()">×</button>
     </div>
     <div class="dtt-body" id="dtt-teacher-think-body" style="max-height:70vh;overflow-y:auto"></div>
-    <div class="dtt-footer">
+    <div class="dtt-footer" style="flex-wrap:wrap;gap:8px">
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#475569;font-weight:800;cursor:pointer;background:#fef9c3;padding:6px 12px;border-radius:8px;border:2px solid #fde047;margin-right:auto">
+        <input type="checkbox" id="dtt-fullscreen-toggle" checked onchange="dttToggleFullscreen()">
+        📺 學生端全螢幕作答
+      </label>
       <button onclick="dttRenderTeacherThink()" class="dtt-btn dtt-btn-ghost">↻ 重整</button>
       <button onclick="closeDttTeacherThink()" class="dtt-btn dtt-btn-ghost">💭 再想想</button>
       <button onclick="dttPublishFinal()" class="dtt-btn dtt-btn-primary">📡 發佈給學生</button>
@@ -1620,6 +1642,169 @@ window.clearPresentation = function() {
     </div>
   </div>
 </div>
+
+<!-- 🤫 靜音模式 modal（老師設定，學生端被鎖） -->
+<div id="silent-modal" class="dtt-modal dtt-hidden">
+  <div class="dtt-card dtt-card-sm">
+    <div class="dtt-header" style="background:linear-gradient(135deg,#475569,#1e293b)">
+      <h2>🤫 靜音模式</h2>
+      <button class="dtt-close" onclick="closeSilent()">×</button>
+    </div>
+    <div class="dtt-body" style="text-align:center">
+      <div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:2px solid #facc15;border-radius:14px;padding:20px;margin-bottom:14px">
+        <div style="font-size:48px;margin-bottom:8px">🤫</div>
+        <div style="font-size:18px;font-weight:900;color:#78350f;margin-bottom:4px">一鍵鎖定全班 iPad</div>
+        <div style="font-size:12px;color:#92400e;line-height:1.5">啟動後，學生端螢幕會被鎖定、不能操作，直到你解除。</div>
+      </div>
+      <div id="silent-status" style="display:none;background:#fef2f2;border:2px solid #fca5a5;border-radius:10px;padding:10px;margin-bottom:14px;color:#991b1b;font-weight:800">🔒 靜音模式進行中（已鎖定 <span id="silent-countdown">0</span> 秒）</div>
+      <button onclick="activateSilent()" id="silent-btn-activate" class="dtt-btn dtt-btn-primary" style="background:linear-gradient(135deg,#475569,#1e293b);font-size:16px;padding:14px 28px;width:100%">🔒 啟動靜音模式</button>
+      <button onclick="deactivateSilent()" id="silent-btn-deactivate" class="dtt-btn dtt-btn-danger dtt-hidden" style="font-size:16px;padding:14px 28px;width:100%;margin-top:8px">🔓 解除靜音模式</button>
+      <p style="font-size:11px;color:#64748b;margin-top:12px">學生端的 DTT/計時器/抽籤等正在進行的活動不受影響</p>
+    </div>
+  </div>
+</div>
+
+<!-- 📊 即時投票牆 modal -->
+<div id="poll-modal" class="dtt-modal dtt-hidden">
+  <div class="dtt-card dtt-card-sm">
+    <div class="dtt-header" style="background:linear-gradient(135deg,#f97316,#dc2626)">
+      <h2>📊 即時投票牆</h2>
+      <button class="dtt-close" onclick="closePoll()">×</button>
+    </div>
+    <div class="dtt-body">
+      <div style="margin-bottom:10px">
+        <label style="font-size:11px;font-weight:800;color:#9a3412;display:block;margin-bottom:4px">📝 投票題目</label>
+        <input id="poll-question" type="text" placeholder="例如：你最喜歡哪種水果？"
+          class="w-full px-3 py-2 border-2 border-orange-200 focus:border-orange-500 rounded-lg outline-none text-sm font-bold">
+      </div>
+      <div style="margin-bottom:10px">
+        <label style="font-size:11px;font-weight:800;color:#9a3412;display:block;margin-bottom:4px">🅰️ 選項（每行一個）</label>
+        <textarea id="poll-options" rows="4" placeholder="蘋果&#10;香蕉&#10;西瓜"
+          class="w-full px-3 py-2 border-2 border-orange-200 focus:border-orange-500 rounded-lg outline-none text-sm font-semibold resize-none"></textarea>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+        <button onclick="pollPublish()" class="dtt-btn dtt-btn-primary" style="background:linear-gradient(135deg,#f97316,#dc2626);flex:1">📡 發佈給學生</button>
+        <button onclick="pollEnd()" class="dtt-btn dtt-btn-danger">🛑 結束</button>
+      </div>
+      <div id="poll-stats" style="background:#fff7ed;border:2px solid #fed7aa;border-radius:10px;padding:10px;min-height:60px">
+        <div style="font-size:11px;color:#9a3412;font-weight:800;margin-bottom:6px">📊 即時統計</div>
+        <div id="poll-bars" style="display:flex;flex-direction:column;gap:4px"></div>
+        <div id="poll-total" style="font-size:11px;color:#64748b;margin-top:6px;text-align:right">尚未開始</div>
+      </div>
+      <button onclick="pollExport()" class="dtt-btn dtt-btn-ghost" style="margin-top:8px;width:100%;font-size:12px">📥 匯出結果 CSV</button>
+    </div>
+  </div>
+</div>
+
+<!-- 學生端投票 widget -->
+<div id="poll-student-widget" class="dtt-hidden" style="position:fixed;inset:0;z-[8500];background:linear-gradient(135deg,#fed7aa,#fdba74);display:flex;flex-direction:column;overflow-y:auto">
+  <div style="background:linear-gradient(135deg,#f97316,#dc2626);color:#fff;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;box-shadow:0 4px 12px rgba(220,38,38,.3)">
+    <h2 style="font-size:18px;font-weight:900">📊 投票</h2>
+    <button onclick="pollStudentClose()" style="background:rgba(255,255,255,.2);color:#fff;width:32px;height:32px;border-radius:50%;border:none;cursor:pointer;font-size:18px">×</button>
+  </div>
+  <div style="flex:1;padding:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px">
+    <div id="poll-student-question" style="font-size:24px;font-weight:900;color:#7c2d12;text-align:center;line-height:1.4"></div>
+    <div id="poll-student-options" style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:500px"></div>
+    <div id="poll-student-done" class="dtt-hidden" style="background:#fff;border-radius:14px;padding:14px 20px;color:#16a34a;font-weight:800;font-size:16px;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,.1)">✅ 已投票！</div>
+  </div>
+</div>
+
+<!-- ⭐ 獎勵系統 modal -->
+<div id="reward-modal" class="dtt-modal dtt-hidden">
+  <div class="dtt-card dtt-card-sm">
+    <div class="dtt-header" style="background:linear-gradient(135deg,#fbbf24,#f59e0b)">
+      <h2>⭐ 獎勵系統</h2>
+      <button class="dtt-close" onclick="closeReward()">×</button>
+    </div>
+    <div class="dtt-body">
+      <div style="margin-bottom:10px">
+        <label style="font-size:11px;font-weight:800;color:#78350f;display:block;margin-bottom:4px">👥 學生名單（每行一個）</label>
+        <textarea id="reward-names" rows="4" placeholder="陳小明&#10;李小美&#10;王大文"
+          class="w-full px-3 py-2 border-2 border-amber-200 focus:border-amber-500 rounded-lg outline-none text-sm font-semibold resize-none"></textarea>
+        <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap">
+          <button onclick="rewardLoadDemo()" class="dtt-btn dtt-btn-ghost" style="font-size:11px;padding:3px 8px">📝 範例</button>
+          <button onclick="rewardLoadFromBoard()" class="dtt-btn dtt-btn-ghost" style="font-size:11px;padding:3px 8px">👥 從已登入載入</button>
+          <button onclick="rewardReset()" class="dtt-btn dtt-btn-danger" style="font-size:11px;padding:3px 8px">🗑️ 重設</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
+        <button onclick="rewardPublish()" class="dtt-btn dtt-btn-primary" style="background:linear-gradient(135deg,#fbbf24,#f59e0b);flex:1">📡 發佈給全班</button>
+        <button onclick="rewardExportCSV()" class="dtt-btn dtt-btn-ghost" style="font-size:11px">📥 CSV</button>
+      </div>
+      <div id="reward-stats" style="background:#fffbeb;border:2px solid #fde68a;border-radius:10px;padding:10px;max-height:300px;overflow-y:auto">
+        <div style="font-size:11px;color:#78350f;font-weight:800;margin-bottom:6px">🏆 排行榜（點名字加分）</div>
+        <div id="reward-list" style="display:flex;flex-direction:column;gap:4px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 學生端獎勵 widget（顯示即時加分） -->
+<div id="reward-student-widget" class="dtt-hidden" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-[8500];background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#fff;border-radius:24px;padding:24px 36px;box-shadow:0 20px 60px rgba(245,158,11,.5);text-align:center;animation:rewardPop .6s cubic-bezier(.34,1.56,.64,1)">
+  <div style="font-size:14px;font-weight:800;opacity:.9">⭐ 加分！</div>
+  <div id="reward-student-name" style="font-size:36px;font-weight:900;margin-top:4px;text-shadow:0 4px 12px rgba(0,0,0,.3)">陳小明</div>
+  <div id="reward-student-score" style="font-size:18px;font-weight:800;margin-top:4px;background:rgba(255,255,255,.25);border-radius:999px;padding:2px 14px;display:inline-block">+1 分</div>
+</div>
+<style>
+@keyframes rewardPop { 0%{transform:translate(-50%,-50%) scale(.3);opacity:0} 100%{transform:translate(-50%,-50%) scale(1);opacity:1} }
+.reward-firework { position:fixed; width:12px; height:12px; pointer-events:none; z-index:8600; }
+</style>
+
+<!-- 🧮 計算機 modal（學生端也可用） -->
+<div id="calc-modal" class="dtt-modal dtt-hidden">
+  <div class="dtt-card dtt-card-sm">
+    <div class="dtt-header" style="background:linear-gradient(135deg,#06b6d4,#3b82f6)">
+      <h2>🧮 計算機</h2>
+      <button class="dtt-close" onclick="closeCalc()">×</button>
+    </div>
+    <div class="dtt-body" style="padding:14px">
+      <input id="calc-display" type="text" readonly value="0"
+        style="width:100%;padding:16px;border:2px solid #bae6fd;border-radius:10px;font-size:36px;font-weight:900;text-align:right;color:#0c4a6e;background:#f0f9ff;font-family:'Courier New',monospace;margin-bottom:10px">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
+        <button onclick="calcInput('C')" class="calc-btn" style="background:#fef2f2;color:#dc2626;font-weight:900">C</button>
+        <button onclick="calcInput('±')" class="calc-btn" style="background:#f1f5f9;color:#475569;font-weight:900">±</button>
+        <button onclick="calcInput('%')" class="calc-btn" style="background:#f1f5f9;color:#475569;font-weight:900">%</button>
+        <button onclick="calcInput('÷')" class="calc-btn calc-op">÷</button>
+        <button onclick="calcInput('7')" class="calc-btn">7</button>
+        <button onclick="calcInput('8')" class="calc-btn">8</button>
+        <button onclick="calcInput('9')" class="calc-btn">9</button>
+        <button onclick="calcInput('×')" class="calc-btn calc-op">×</button>
+        <button onclick="calcInput('4')" class="calc-btn">4</button>
+        <button onclick="calcInput('5')" class="calc-btn">5</button>
+        <button onclick="calcInput('6')" class="calc-btn">6</button>
+        <button onclick="calcInput('-')" class="calc-btn calc-op">−</button>
+        <button onclick="calcInput('1')" class="calc-btn">1</button>
+        <button onclick="calcInput('2')" class="calc-btn">2</button>
+        <button onclick="calcInput('3')" class="calc-btn">3</button>
+        <button onclick="calcInput('+')" class="calc-btn calc-op">+</button>
+        <button onclick="calcInput('0')" class="calc-btn" style="grid-column:span 2">0</button>
+        <button onclick="calcInput('.')" class="calc-btn">.</button>
+        <button onclick="calcInput('=')" class="calc-btn calc-equals">=</button>
+      </div>
+    </div>
+  </div>
+</div>
+<style>
+.calc-btn { padding:14px; border:1px solid #e2e8f0; border-radius:8px; background:#fff; font-size:18px; font-weight:700; color:#1e293b; cursor:pointer; transition:all .1s; }
+.calc-btn:active { background:#e2e8f0; transform:scale(.96); }
+.calc-btn:hover { background:#f8fafc; }
+.calc-op { background:#dbeafe; color:#1d4ed8; border-color:#93c5fd; }
+.calc-op:hover { background:#bfdbfe !important; }
+.calc-equals { background:linear-gradient(135deg,#06b6d4,#3b82f6); color:#fff; border-color:#0ea5e9; }
+.calc-equals:hover { filter:brightness(1.1); }
+</style>
+
+<!-- 學生端靜音遮罩（全螢幕鎖定） -->
+<div id="silent-overlay" class="dtt-hidden" style="position:fixed;inset:0;z-index:[99999];background:linear-gradient(135deg,#1e293b,#475569);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;text-align:center;padding:20px">
+  <div style="font-size:80px;margin-bottom:20px">🤫</div>
+  <div style="font-size:28px;font-weight:900;letter-spacing:2px;margin-bottom:8px">靜 音 模 式</div>
+  <div style="font-size:16px;color:#cbd5e1;margin-bottom:24px">請專心上課，螢幕暫停使用</div>
+  <div id="silent-overlay-timer" style="font-size:48px;font-weight:900;color:#fbbf24;font-family:monospace">00:00</div>
+  <div style="font-size:11px;color:#94a3b8;margin-top:30px">等待老師解除…</div>
+</div>
+
+<!-- 學生端計算機按鈕（FAB） -->
+<button id="calc-fab" onclick="openCalc()" class="dtt-hidden" style="position:fixed;bottom:24px;left:24px;z-index:7500;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#06b6d4,#3b82f6);color:#fff;border:none;box-shadow:0 6px 20px rgba(6,182,212,.4);font-size:28px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s" title="計算機">🧮</button>
 
 <!-- 電子筆浮動工具列（覆蓋在簡報上） -->
 <div id="pen-toolbar-float" class="dtt-hidden" style="position:fixed;top:80px;left:50%;transform:translateX(-50%);z-[9500];background:linear-gradient(135deg,#8b5cf6,#7c3aed);color:#fff;border-radius:14px;padding:8px 12px;display:flex;gap:8px;align-items:center;box-shadow:0 10px 30px rgba(124,58,237,.4);flex-wrap:wrap;max-width:95vw">
@@ -1944,6 +2129,7 @@ window.dttConfirm = function() {
         methodImages: dttDraftImages.map(a => a.slice()),
         conseqImages: dttDraftConseqImages.map(a => a.slice()),
         correctMethod: parseInt((document.getElementById('dtt-correct')||{}).value, 10) || 0,
+        fullscreenStudent: true,   // 預設學生端全螢幕作答
         openedAt: Date.now()
     };
     closeDttEditor();
@@ -1951,6 +2137,30 @@ window.dttConfirm = function() {
     // ★ 進入「老師思考模式」（4 步驟框架 + 拖拉 + 選正確方法）
     openDttTeacherThink();
     showToast('✅ 題目已建立，請在老師端完成思考後再發佈', 'success', 3500);
+};
+
+// 老師切換「學生端全螢幕作答」設定（並即時廣播更新給已連線學生）
+window.dttToggleFullscreen = function() {
+    if (!dttSession) return;
+    const checked = document.getElementById('dtt-fullscreen-toggle').checked;
+    dttSession.fullscreenStudent = checked;
+    // 若已廣播過（即 dttSession.openedAt 已被發送過），再次廣播更新
+    if (dttSession.openedAt && dttSession._published) {
+        dttBroadcast('dtt_publish', {
+            topic: dttSession.topic,
+            q1: stripHtml(dttSession.q1 || ''),
+            mc: dttSession.methodCount,
+            mn: (dttSession.methodNames || []).map(n => stripHtml(n)),
+            mi: (dttSession.methodImgs || []).map(s => stripHtml(s)),
+            miI: (dttSession.methodImages || []).map(arr => arr || []),
+            ci: (dttSession.conseqTexts || []).map(s => stripHtml(s)),
+            ciI: (dttSession.conseqImages || []).map(arr => arr || []),
+            cm: dttSession.correctMethod,
+            fullscreenStudent: checked,
+            op: dttSession.openedAt
+        });
+        showToast(checked ? '📺 學生端已切為全螢幕' : '▢ 學生端已切為一般模式', 'info', 1500);
+    }
 };
 
 // ★ 老師思考模式：顯示 4 步驟框架，可拖拉、選正確方法
@@ -2241,6 +2451,10 @@ window.dttPublishFinal = function() {
     if (!dttSession) return;
     closeDttTeacherThink();
     dttStudentAnswers = {};
+    // ★ 從 UI 讀取當前 toggle 狀態
+    const fsToggle = document.getElementById('dtt-fullscreen-toggle');
+    if (fsToggle) dttSession.fullscreenStudent = fsToggle.checked;
+    dttSession._published = true;
     // 打包給學生（題目 + 方法 + 後果，含圖）
     const lite = {
         topic: dttSession.topic,
@@ -2252,11 +2466,11 @@ window.dttPublishFinal = function() {
         ci: (dttSession.conseqTexts || []).map(s => stripHtml(s)),
         ciI: (dttSession.conseqImages || []).map(arr => arr || []),
         cm: dttSession.correctMethod,
+        fullscreenStudent: dttSession.fullscreenStudent,
         op: dttSession.openedAt
     };
     openDttQr(lite);
     dttBroadcast('dtt_publish', lite);
-    // 額外多發幾次（處理 SSE 掉線的學生）
     let count = 0;
     const repeatIv = setInterval(() => {
         dttBroadcast('dtt_publish', lite);
@@ -2488,6 +2702,432 @@ function dttBroadcast(type, payload) {
     ntfySend(type, payload);
 }
 
+// ═══════════════════════════════════════════════════════════════
+//  🤫 靜音模式（避免和原 focus-hide / toggleFocusMode 撞名）
+//  老師一按 → 全班 iPad 鎖定全螢幕遮罩 + 計時
+// ═══════════════════════════════════════════════════════════════
+let silentActive = false;
+let silentStartTs = 0;
+let silentTimerIv = null;
+
+window.toggleSilentMode = function() {
+    if (silentActive) deactivateSilent(); else activateSilent();
+};
+window.openSilent = function() {
+    document.getElementById('silent-modal').classList.remove('dtt-hidden');
+    updateSilentUI();
+};
+window.closeSilent = function() { document.getElementById('silent-modal').classList.add('dtt-hidden'); };
+
+window.activateSilent = function() {
+    silentActive = true;
+    silentStartTs = Date.now();
+    dttBroadcast('silent_on', { ts: silentStartTs });
+    updateSilentUI();
+    showToast('🤫 靜音模式已啟動', 'success');
+    closeSilent();
+};
+window.deactivateSilent = function() {
+    silentActive = false;
+    silentStartTs = 0;
+    dttBroadcast('silent_off', {});
+    updateSilentUI();
+    showToast('🔓 已解除靜音模式', 'info');
+    closeSilent();
+};
+
+function updateSilentUI() {
+    const active = silentActive;
+    document.getElementById('silent-status').style.display = active ? 'block' : 'none';
+    document.getElementById('silent-btn-activate').classList.toggle('dtt-hidden', active);
+    document.getElementById('silent-btn-deactivate').classList.toggle('dtt-hidden', !active);
+    if (active) {
+        if (silentTimerIv) clearInterval(silentTimerIv);
+        silentTimerIv = setInterval(() => {
+            const sec = Math.floor((Date.now() - silentStartTs) / 1000);
+            const el = document.getElementById('silent-countdown');
+            if (el) el.textContent = sec;
+        }, 1000);
+    } else {
+        if (silentTimerIv) clearInterval(silentTimerIv);
+    }
+}
+
+// 學生端靜音遮罩控制
+function applySilentOverlay(on, startTs) {
+    const ov = document.getElementById('silent-overlay');
+    if (!ov) return;
+    if (on) {
+        ov.classList.remove('dtt-hidden');
+        ov.style.display = 'flex';
+        const start = startTs || Date.now();
+        const update = () => {
+            const sec = Math.floor((Date.now() - start) / 1000);
+            const m = String(Math.floor(sec/60)).padStart(2,'0');
+            const s = String(sec%60).padStart(2,'0');
+            const t = document.getElementById('silent-overlay-timer');
+            if (t) t.textContent = m + ':' + s;
+        };
+        update();
+        if (window._silentOverlayIv) clearInterval(window._silentOverlayIv);
+        window._silentOverlayIv = setInterval(update, 1000);
+    } else {
+        ov.classList.add('dtt-hidden');
+        ov.style.display = 'none';
+        if (window._silentOverlayIv) clearInterval(window._silentOverlayIv);
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  📊 即時投票牆
+// ═══════════════════════════════════════════════════════════════
+let pollData = null;     // {question, options:[], votes:{idx:count}}
+let pollActive = false;
+
+window.openPoll = function() {
+    document.getElementById('poll-modal').classList.remove('dtt-hidden');
+    renderPollStats();
+};
+window.closePoll = function() { document.getElementById('poll-modal').classList.add('dtt-hidden'); };
+
+window.pollPublish = function() {
+    const q = document.getElementById('poll-question').value.trim();
+    const optsRaw = document.getElementById('poll-options').value.trim();
+    if (!q) return showToast('請輸入投票題目', 'warning');
+    if (!optsRaw) return showToast('請輸入至少一個選項', 'warning');
+    const opts = optsRaw.split('\n').map(s => s.trim()).filter(Boolean);
+    if (opts.length < 2) return showToast('至少需要 2 個選項', 'warning');
+    pollData = { question: q, options: opts, votes: opts.map(() => 0) };
+    pollActive = true;
+    dttBroadcast('poll_start', { question: q, options: opts });
+    showToast('📡 已發佈投票！', 'success');
+    renderPollStats();
+};
+
+window.pollEnd = function() {
+    if (!pollActive) return showToast('投票尚未開始', 'info');
+    pollActive = false;
+    dttBroadcast('poll_end', {});
+    showToast('🛑 已結束投票', 'info');
+};
+
+function renderPollStats() {
+    const wrap = document.getElementById('poll-bars');
+    const totalEl = document.getElementById('poll-total');
+    if (!pollData) {
+        wrap.innerHTML = '<div style="font-size:11px;color:#94a3b8;text-align:center;padding:8px">尚未發佈投票</div>';
+        totalEl.textContent = '尚未開始';
+        return;
+    }
+    const total = pollData.votes.reduce((a, b) => a + b, 0);
+    wrap.innerHTML = pollData.options.map((opt, i) => {
+        const cnt = pollData.votes[i];
+        const pct = total > 0 ? Math.round(cnt / total * 100) : 0;
+        return `
+        <div style="display:flex;align-items:center;gap:6px;font-size:11px">
+            <div style="width:80px;font-weight:700;color:#7c2d12;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${dttEsc(opt)}</div>
+            <div style="flex:1;background:#fed7aa;border-radius:999px;height:18px;overflow:hidden">
+                <div style="background:linear-gradient(90deg,#f97316,#dc2626);height:100%;width:${pct}%;transition:width .4s"></div>
+            </div>
+            <div style="width:50px;text-align:right;color:#9a3412;font-weight:800">${cnt} 票</div>
+        </div>`;
+    }).join('');
+    totalEl.textContent = pollActive ? `總票數：${total}` : '投票已結束';
+}
+
+window.pollExport = function() {
+    if (!pollData) return showToast('沒有投票資料', 'warning');
+    let csv = '\uFEFF投票題目,' + pollData.question + '\n';
+    pollData.options.forEach((opt, i) => {
+        csv += `${opt},${pollData.votes[i]}\n`;
+    });
+    csv += `總計,${pollData.votes.reduce((a,b)=>a+b,0)}\n`;
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `投票_${pollData.question}_${Date.now()}.csv`;
+    a.click();
+    showToast('已匯出 CSV', 'success');
+};
+
+// 學生端投票 widget
+window.pollStudentClose = function() {
+    document.getElementById('poll-student-widget').classList.add('dtt-hidden');
+};
+
+function applyPollStart(payload) {
+    pollData = { question: payload.question, options: payload.options, votes: payload.options.map(() => 0) };
+    pollActive = true;
+    const w = document.getElementById('poll-student-widget');
+    const qEl = document.getElementById('poll-student-question');
+    const oEl = document.getElementById('poll-student-options');
+    const doneEl = document.getElementById('poll-student-done');
+    qEl.textContent = payload.question;
+    oEl.innerHTML = payload.options.map((opt, i) =>
+        `<button onclick="pollStudentVote(${i})" data-poll-opt="${i}"
+            style="background:#fff;border:3px solid #f97316;border-radius:12px;padding:16px 20px;font-size:18px;font-weight:900;color:#7c2d12;cursor:pointer;transition:all .15s;box-shadow:0 4px 10px rgba(249,115,22,.2)"
+            onmouseover="this.style.background='#fff7ed'" onmouseout="this.style.background='#fff'">
+            ${dttEsc(opt)}
+        </button>`
+    ).join('');
+    doneEl.classList.add('dtt-hidden');
+    w.classList.remove('dtt-hidden');
+}
+
+window.pollStudentVote = function(idx) {
+    if (!localStudent.isLoggedIn) return showToast('請先登入', 'warning');
+    if (!pollData) return;
+    // 記錄這位學生已投票
+    pollData._myVote = idx;
+    dttBroadcast('poll_vote', { id: localStudent.id, name: localStudent.name, idx });
+    document.getElementById('poll-student-done').classList.remove('dtt-hidden');
+    document.querySelectorAll('#poll-student-options button').forEach((btn, i) => {
+        btn.style.background = i === idx ? '#fbbf24' : '#fff';
+        btn.style.borderColor = i === idx ? '#16a34a' : '#f97316';
+        btn.disabled = true;
+    });
+    setTimeout(() => document.getElementById('poll-student-done').classList.add('dtt-hidden'), 2000);
+};
+
+function applyPollVote(payload) {
+    if (!pollData) return;
+    pollData.votes[payload.idx]++;
+    renderPollStats();
+}
+
+function applyPollEnd() {
+    pollActive = false;
+    renderPollStats();
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  ⭐ 獎勵系統
+// ═══════════════════════════════════════════════════════════════
+let rewardData = {};   // {name: score}
+
+window.openReward = function() {
+    document.getElementById('reward-modal').classList.remove('dtt-hidden');
+    renderRewardList();
+    // 自動讀取已儲存名單
+    try {
+        const saved = JSON.parse(localStorage.getItem('reward_names_' + roomCode) || '[]');
+        if (saved.length > 0 && !document.getElementById('reward-names').value) {
+            document.getElementById('reward-names').value = saved.join('\n');
+        }
+        const scores = JSON.parse(localStorage.getItem('reward_scores_' + roomCode) || '{}');
+        rewardData = scores;
+    } catch(e) {}
+};
+window.closeReward = function() { document.getElementById('reward-modal').classList.add('dtt-hidden'); };
+
+window.rewardLoadDemo = function() {
+    document.getElementById('reward-names').value = '陳小明\n李小美\n王大文\n張小玲';
+};
+window.rewardLoadFromBoard = function() {
+    const names = Object.keys(localResponses);
+    if (names.length === 0) return showToast('目前沒有已登入學生', 'info');
+    document.getElementById('reward-names').value = names.join('\n');
+};
+window.rewardReset = function() {
+    if (!confirm('重設所有分數？')) return;
+    rewardData = {};
+    try {
+        localStorage.removeItem('reward_scores_' + roomCode);
+    } catch(e) {}
+    renderRewardList();
+    dttBroadcast('reward_reset', {});
+};
+
+function getRewardNames() {
+    return document.getElementById('reward-names').value.split('\n').map(s => s.trim()).filter(Boolean);
+}
+
+window.rewardPublish = function() {
+    const names = getRewardNames();
+    if (names.length === 0) return showToast('請先輸入學生名單', 'warning');
+    try {
+        localStorage.setItem('reward_names_' + roomCode, JSON.stringify(names));
+        // 初始化沒有的分數為 0
+        names.forEach(n => { if (!(n in rewardData)) rewardData[n] = 0; });
+        localStorage.setItem('reward_scores_' + roomCode, JSON.stringify(rewardData));
+    } catch(e) {}
+    dttBroadcast('reward_init', { names, scores: rewardData });
+    renderRewardList();
+    showToast('📡 已發佈給全班！', 'success');
+};
+
+window.rewardAdd = function(name, delta) {
+    rewardData[name] = Math.max(0, (rewardData[name] || 0) + delta);
+    try {
+        localStorage.setItem('reward_scores_' + roomCode, JSON.stringify(rewardData));
+    } catch(e) {}
+    renderRewardList();
+    // 全班同步
+    dttBroadcast('reward_update', { name, score: rewardData[name] });
+    // 學生端撒花
+    if (delta > 0) {
+        dttBroadcast('reward_celebrate', { name, score: rewardData[name], delta });
+    }
+};
+
+function renderRewardList() {
+    const wrap = document.getElementById('reward-list');
+    const names = getRewardNames();
+    if (names.length === 0) {
+        wrap.innerHTML = '<div style="font-size:11px;color:#94a3b8;text-align:center;padding:8px">請先輸入學生名單並按「發佈」</div>';
+        return;
+    }
+    // 排序：高分到低分
+    const sorted = names.slice().sort((a, b) => (rewardData[b] || 0) - (rewardData[a] || 0));
+    const medals = ['🥇', '🥈', '🥉'];
+    wrap.innerHTML = sorted.map((name, idx) => {
+        const score = rewardData[name] || 0;
+        const medal = medals[idx] || '';
+        return `
+        <div style="display:flex;align-items:center;gap:6px;background:#fff;padding:8px 10px;border-radius:8px;border:1px solid #fde68a">
+            <div style="width:22px;font-size:14px;flex-shrink:0">${medal}</div>
+            <div style="flex:1;font-weight:800;color:#78350f">${dttEsc(name)}</div>
+            <div style="font-size:13px;font-weight:900;color:#d97706;background:#fef3c7;padding:2px 8px;border-radius:999px;margin-right:4px">${score}</div>
+            <button onclick="rewardAdd('${name.replace(/'/g, "\\'")}', 1)" style="background:#10b981;color:#fff;border:none;width:28px;height:28px;border-radius:6px;font-size:16px;font-weight:900;cursor:pointer">+</button>
+            <button onclick="rewardAdd('${name.replace(/'/g, "\\'")}', -1)" style="background:#fee2e2;color:#b91c1c;border:none;width:28px;height:28px;border-radius:6px;font-size:16px;font-weight:900;cursor:pointer">−</button>
+        </div>`;
+    }).join('');
+}
+
+window.rewardExportCSV = function() {
+    const names = getRewardNames();
+    if (names.length === 0) return showToast('沒有資料', 'warning');
+    let csv = '\uFEFF姓名,分數\n';
+    names.slice().sort((a, b) => (rewardData[b] || 0) - (rewardData[a] || 0))
+        .forEach(n => { csv += `${n},${rewardData[n] || 0}\n`; });
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `獎勵排名_${Date.now()}.csv`;
+    a.click();
+    showToast('已匯出 CSV', 'success');
+};
+
+// 學生端：廣播進來時顯示撒花動畫
+function applyRewardCelebrate(payload) {
+    const w = document.getElementById('reward-student-widget');
+    const n = document.getElementById('reward-student-name');
+    const s = document.getElementById('reward-student-score');
+    if (!w || !n || !s) return;
+    n.textContent = payload.name;
+    s.textContent = '+' + payload.delta + ' 分（總 ' + payload.score + '）';
+    w.classList.remove('dtt-hidden');
+    rewardFireworks();
+    try { beep(); } catch(e) {}
+    setTimeout(() => w.classList.add('dtt-hidden'), 3500);
+}
+
+function rewardFireworks() {
+    const colors = ['#fbbf24','#f59e0b','#ef4444','#ec4899','#a855f7','#3b82f6','#10b981'];
+    for (let i = 0; i < 50; i++) {
+        const c = document.createElement('div');
+        c.className = 'reward-firework';
+        c.style.cssText = `top:-20px;left:${50 + (Math.random()-0.5)*80}%;background:${colors[Math.floor(Math.random()*colors.length)]};transform:rotate(${Math.random()*360}deg)`;
+        document.body.appendChild(c);
+        const fall = c.animate([
+            { transform: c.style.transform + ' translateY(0)', opacity: 1 },
+            { transform: c.style.transform + ' translateY(110vh) rotate(' + (Math.random()*720) + 'deg)', opacity: 0 }
+        ], { duration: 2000 + Math.random()*1500, easing: 'cubic-bezier(.4,.2,.6,1)' });
+        fall.onfinish = () => c.remove();
+    }
+}
+
+function applyRewardUpdate(payload) {
+    rewardData[payload.name] = payload.score;
+}
+
+function applyRewardInit(payload) {
+    if (payload && payload.scores) rewardData = payload.scores;
+    const w = document.getElementById('reward-student-widget');
+    // 學生端：初始化分數，但不彈撒花
+    if (payload && payload.scores) {
+        // 簡單顯示給學生看自己目前分數
+        const myName = localStudent.name;
+        if (myName && payload.scores[myName] !== undefined) {
+            showToast(`⭐ 你目前有 ${payload.scores[myName]} 分！`, 'success', 3000);
+        }
+    }
+}
+
+function applyRewardReset() {
+    rewardData = {};
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  🧮 計算機（學生端和老師端都能用）
+// ═══════════════════════════════════════════════════════════════
+let calcExpr = '';
+
+window.openCalc = function() {
+    document.getElementById('calc-modal').classList.remove('dtt-hidden');
+    if (calcExpr === '') document.getElementById('calc-display').value = '0';
+    // 學生端也顯示浮動按鈕（如果隱藏）
+    const fab = document.getElementById('calc-fab');
+    if (fab) fab.classList.remove('dtt-hidden');
+};
+window.closeCalc = function() { document.getElementById('calc-modal').classList.add('dtt-hidden'); };
+
+window.calcInput = function(key) {
+    const display = document.getElementById('calc-display');
+    if (key === 'C') {
+        calcExpr = '';
+        display.value = '0';
+        return;
+    }
+    if (key === '±') {
+        if (calcExpr.startsWith('-')) calcExpr = calcExpr.slice(1);
+        else if (calcExpr && calcExpr !== '0') calcExpr = '-' + calcExpr;
+        display.value = calcExpr || '0';
+        return;
+    }
+    if (key === '%') {
+        try {
+            const v = eval(calcExpr.replace(/×/g, '*').replace(/÷/g, '/')) / 100;
+            calcExpr = String(v);
+            display.value = calcExpr;
+        } catch(e) {}
+        return;
+    }
+    if (key === '=') {
+        try {
+            // 安全替換運算符
+            const safe = calcExpr.replace(/×/g, '*').replace(/÷/g, '/').replace(/[^0-9+\-*/.%() ]/g, '');
+            const result = Function('"use strict"; return (' + safe + ')')();
+            calcExpr = String(result);
+            display.value = calcExpr;
+        } catch(e) {
+            display.value = '錯誤';
+            calcExpr = '';
+        }
+        return;
+    }
+    // 數字 / 運算符
+    if (calcExpr === '' && (key === '+' || key === '-' || key === '.')) calcExpr = '0';
+    // 避免重複運算符
+    const lastChar = calcExpr.slice(-1);
+    if ('+-×÷.'.includes(key) && '+-×÷.'.includes(lastChar)) {
+        calcExpr = calcExpr.slice(0, -1) + key;
+    } else {
+        calcExpr += key;
+    }
+    display.value = calcExpr || '0';
+};
+
+// 學生端一進場就顯示計算機浮動按鈕
+window.addEventListener('load', () => {
+    if (isForceStudent) {
+        setTimeout(() => {
+            const fab = document.getElementById('calc-fab');
+            if (fab) fab.classList.remove('dtt-hidden');
+        }, 1000);
+    }
+});
+
 // ★ iPad Safari 友善：學生端手動 GET ntfy topic 拿最新 dtt 訊息（不用 SSE）
 window.studentFetchDtt = async function() {
     const btn = document.getElementById('btn-fetch-dtt');
@@ -2601,29 +3241,44 @@ function showDttStudentView() {
     document.querySelectorAll('#student-answer-panel > div').forEach(d => {
         if (d.id !== 'mode-student-dtt') d.style.display = 'none';
     });
-    // ★ 全螢幕顯示 dtt 介面
     const wrap = document.getElementById('mode-student-dtt');
     if (!wrap) { console.error('找不到 #mode-student-dtt'); return; }
     wrap.classList.remove('dtt-hidden');
     wrap.classList.add('flex');
-    // 讓它「逃出」panel 成為 fixed 全螢幕
-    wrap.style.position = 'fixed';
-    wrap.style.inset = '0';
-    wrap.style.width = '100vw';
-    wrap.style.height = '100vh';
-    wrap.style.maxWidth = 'none';
-    wrap.style.zIndex = '7000';
-    wrap.style.background = 'linear-gradient(135deg,#fef3c7 0%,#fce7f3 50%,#dbeafe 100%)';
-    wrap.style.padding = '16px';
-    wrap.style.overflowY = 'auto';
-    wrap.style.WebkitOverflowScrolling = 'touch';
-    // 隱藏學生 workspace 的系統狀態列（避免擋視覺）
-    const sysBox = document.querySelector('#student-workspace .mt-4.p-3.bg-slate-50');
-    if (sysBox) sysBox.style.display = 'none';
+    // ★ 根據老師設定決定全螢幕或一般模式
+    const wantFullscreen = (dttSession.fullscreenStudent !== false);
+    if (wantFullscreen) {
+        wrap.style.position = 'fixed';
+        wrap.style.inset = '0';
+        wrap.style.width = '100vw';
+        wrap.style.height = '100vh';
+        wrap.style.maxWidth = 'none';
+        wrap.style.zIndex = '7000';
+        wrap.style.background = 'linear-gradient(135deg,#fef3c7 0%,#fce7f3 50%,#dbeafe 100%)';
+        wrap.style.padding = '16px';
+        wrap.style.overflowY = 'auto';
+        wrap.style.WebkitOverflowScrolling = 'touch';
+        // 隱藏系統狀態列
+        const sysBox = document.querySelector('#student-workspace .mt-4.p-3.bg-slate-50');
+        if (sysBox) sysBox.style.display = 'none';
+    } else {
+        // 一般模式：保持在 panel 內
+        wrap.style.position = '';
+        wrap.style.inset = '';
+        wrap.style.width = '';
+        wrap.style.height = '';
+        wrap.style.maxWidth = '';
+        wrap.style.zIndex = '';
+        wrap.style.background = '';
+        wrap.style.padding = '';
+        wrap.style.overflowY = '';
+        wrap.style.WebkitOverflowScrolling = '';
+        const sysBox = document.querySelector('#student-workspace .mt-4.p-3.bg-slate-50');
+        if (sysBox) sysBox.style.display = '';
+    }
     document.getElementById('student-current-mode-txt').innerText = '🧠 ' + dttSession.topic;
-    // 渲染
     dttRenderStudentForm();
-    // 還原草稿（若存在）
+    // 還原草稿
     if (dttStudentAns && dttStudentAns.sessionId === dttSession.openedAt) {
         if (typeof dttStudentAns.finalPick === 'number' && dttStudentAns.finalPick >= 0) {
             dttStudentExpandMethod(dttStudentAns.finalPick);
@@ -2660,13 +3315,17 @@ window.dttExitFullscreen = function() {
 function dttRenderStudentForm() {
     const s = dttSession;
     const html = [];
-    // ★ 頂部：題目 + 關閉全螢幕
+    // ★ 頂部：題目 + 關閉全螢幕（只在全螢幕模式顯示）
+    const isFs = (s.fullscreenStudent !== false);
+    const closeBtn = isFs
+        ? `<button onclick="dttExitFullscreen()" title="退出全螢幕（改用一般模式）" style="background:#fff;border:2px solid #cbd5e1;color:#475569;width:36px;height:36px;border-radius:50%;font-size:20px;font-weight:800;cursor:pointer;flex-shrink:0">×</button>`
+        : '';
     html.push(`<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;background:linear-gradient(135deg,#fff5f5,#fef3c7);border:2px solid #fecdd3;border-radius:14px;padding:12px 16px;box-shadow:0 4px 12px rgba(190,18,60,.15)">
         <div style="flex:1;min-width:0">
-            <div style="font-size:11px;color:#be123c;font-weight:800;letter-spacing:1px">🧠 解難決策題</div>
+            <div style="font-size:11px;color:#be123c;font-weight:800;letter-spacing:1px">🧠 解難決策題${isFs ? '' : '（一般模式）'}</div>
             <div style="font-size:18px;font-weight:900;color:#881337;margin-top:2px;line-height:1.3">${dttEsc(s.topic || '請選一個方法')}</div>
         </div>
-        <button onclick="dttExitFullscreen()" style="background:#fff;border:2px solid #cbd5e1;color:#475569;width:36px;height:36px;border-radius:50%;font-size:20px;font-weight:800;cursor:pointer;flex-shrink:0">×</button>
+        ${closeBtn}
     </div>`);
     // 題目情境
     if (s.q1) {
@@ -3053,12 +3712,26 @@ function dttHandleIncoming(type, payload) {
         dttStudentAnswers = {};
         if (currentRole !== 'student') dttRenderResponses();
     } else if (type === 'dtt_submit') {
-        if (currentRole === 'student') return; // 學生不會收到
+        if (currentRole === 'student') return;
         dttStudentAnswers[payload.id] = { name: payload.name, html: payload.html, ts: payload.ts, finalPick: (typeof payload.finalPick === 'number' ? payload.finalPick : -1), reason: payload.reason || '' };
         showToast('📩 ' + payload.name + ' 提交了作答', 'success');
         if (!document.getElementById('dtt-responses-modal').classList.contains('dtt-hidden')) dttRenderResponses();
-        // 主控台彈出提示徽章
         if (typeof dttUpdateBadge === 'function') dttUpdateBadge();
+    } else if (type === 'poll_vote' && currentRole !== 'student') {
+        // 老師端：學生投票即時更新
+        if (pollData && typeof payload.idx === 'number') {
+            if (!pollData.votes[payload.idx]) pollData.votes[payload.idx] = 0;
+            pollData.votes[payload.idx]++;
+            renderPollStats();
+        }
+    } else if (type === 'silent_on' && currentRole !== 'student') {
+        // 老師端顯示狀態
+        silentActive = true;
+        silentStartTs = payload.ts || Date.now();
+        updateSilentUI();
+    } else if (type === 'silent_off' && currentRole !== 'student') {
+        silentActive = false;
+        updateSilentUI();
     }
 }
 
@@ -3582,10 +4255,27 @@ document.addEventListener('input', e => {
                 n.textContent = payload.name;
                 w.classList.remove('dtt-hidden');
                 try { beep(); } catch(e) {}
-                // 撒花
                 lotteryConfetti();
                 setTimeout(() => w.classList.add('dtt-hidden'), 6000);
             }
+        } else if (type === 'silent_on') {
+            applySilentOverlay(true, payload.ts || Date.now());
+        } else if (type === 'silent_off') {
+            applySilentOverlay(false);
+        } else if (type === 'poll_start') {
+            applyPollStart(payload);
+        } else if (type === 'poll_end') {
+            applyPollEnd();
+        } else if (type === 'poll_vote') {
+            applyPollVote(payload);
+        } else if (type === 'reward_celebrate') {
+            applyRewardCelebrate(payload);
+        } else if (type === 'reward_update') {
+            applyRewardUpdate(payload);
+        } else if (type === 'reward_init') {
+            applyRewardInit(payload);
+        } else if (type === 'reward_reset') {
+            applyRewardReset();
         }
     }
     // 等 dttHandleIncoming 存在後包裝
