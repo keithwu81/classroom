@@ -475,6 +475,20 @@ window.addEventListener('load', () => {
     // 顯示 FAB 工具列（老師全功能；學生端不顯示 FAB — 學生只看老師推送的內容）
     const fab = document.getElementById('toolbar-fab');
     if (fab) fab.style.display = isForceStudent ? 'none' : 'flex';
+    // 🤖 學生端：載入 AI 數字人（語音助理）
+    if (isForceStudent) {
+        setTimeout(() => {
+            const s = document.createElement('script');
+            s.src = 'embed.js';
+            s.setAttribute('data-widget', 'widget.html');
+            s.setAttribute('data-knowledge', 'knowledge.js');
+            // data-model 留空 = 用 widget.html 內建預設 Live2D 角色
+            // 想換角色就設定：s.setAttribute('data-model', '你的-model3.json');
+            s.async = true;
+            document.body.appendChild(s);
+            console.log('[Avatar] 學生端 AI 數字人已載入');
+        }, 800);
+    }
 });
 
 // ── 房號 ──────────────────────────────────────────────────────
